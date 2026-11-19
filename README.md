@@ -25,9 +25,9 @@
   <img alt="frontend" src="https://img.shields.io/badge/React-18-61dafb.svg" />
 </p>
 
-> ⚠️ 本项目为第三方开源项目，\*\*与 DeepSeek 官方无关\*\*，未获得官方背书。项目名与图标仅用于说明用途，发布前请自行评估商标风险（详见 \[免责声明](#免责声明)）。
+> ⚠️ 本项目为第三方开源项目，**与 DeepSeek 官方无关**，未获得官方背书。项目名与图标仅用于说明用途，发布前请自行评估商标风险（详见 [免责声明](#免责声明)）。
 
-\---
+---
 
 ## 目录
 
@@ -40,15 +40,15 @@
 * [免责声明](#免责声明)
 * [许可证](#许可证)
 
-\---
+---
 
 ## 截图
 
 |对话首页|设置|圈画标注|
 |-|-|-|
-|!\[welcome](docs/images/welcome.png)|!\[settings](docs/images/settings.png)|!\[editor](docs/images/editor.png)|
+|![welcome](docs/images/welcome.png)|![settings](docs/images/settings.png)|![editor](docs/images/editor.png)|
 
-\---
+---
 
 ## 功能
 
@@ -56,11 +56,11 @@
 
 * 流式输出、停止生成、重新生成、分支切换（来自官方前端）
 * 深度思考：**可设置默认折叠**，只显示「已思考（用时 N 秒）」，点标题展开
-* 联网搜索（官方 `deepseek\_web\_search` 工具）
+* 联网搜索（官方 `deepseek_web_search` 工具）
 * Markdown / 代码高亮 / KaTeX 公式 / Mermaid 图表
 * 每条回复显示 token 用量（输入 / 输出）
 * 模型切换：`API Key` 或 `Harness 账号` × `DeepSeek-V4.1-Flash` / `DeepSeek-V4-Pro`
-* 推理强度（`output\_config.effort`）与最大输出长度（`max\_tokens`）可调
+* 推理强度（`output_config.effort`）与最大输出长度（`max_tokens`）可调
 
 ### 输入与附件
 
@@ -83,7 +83,7 @@
 
 ### 数据
 
-* 导入 / 导出官方导出的历史 ZIP（`export\_format\_version: 3`）
+* 导入 / 导出官方导出的历史 ZIP（`export_format_version: 3`）
 * 导入容错：单条会话不兼容只跳过该条，不再整包失败
 * 导入 / 导出**进度条**（百分比 + 已处理数量）
 * 导出按 512KB 分块流式写入系统「下载」目录，避免百兆级数据 OOM
@@ -94,7 +94,7 @@
 * 返回键分级：先关弹层 / 侧边栏 / 搜索，再退出
 * 内容不侵入状态栏，键盘弹出时输入框上移
 * 暗色模式、字体大小、界面缩放
-* 生成期间持有 `PARTIAL\_WAKE\_LOCK`，退到后台不会中断流式输出
+* 生成期间持有 `PARTIAL_WAKE_LOCK`，退到后台不会中断流式输出
 
 ## 仓库结构
 
@@ -120,7 +120,7 @@
 └── .github/workflows/        # 前端类型检查与构建 CI
 ```
 
-\---
+---
 
 ## 架构
 
@@ -151,11 +151,11 @@
 
 更详细的模块说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-\---
+---
 
 ## 快速开始
 
-### 1\. 构建前端
+### 1. 构建前端
 
 需要 Node.js 22+、pnpm（通过 corepack）。
 
@@ -165,19 +165,19 @@ corepack pnpm install
 corepack pnpm build          # 产物在 web/dist
 ```
 
-> Windows 下若 `pnpm build` 因 `NODE\_ENV=` 前缀报错，可直接执行：
-> `NODE\_ENV=production node node\_modules/@rspack/cli/bin/rspack.js build -c rspack.config.ts`
+> Windows 下若 `pnpm build` 因 `NODE_ENV=` 前缀报错，可直接执行：
+> `NODE_ENV=production node node_modules/@rspack/cli/bin/rspack.js build -c rspack.config.ts`
 > （在 Git Bash 中运行）
 
-### 2\. 同步到安卓资源目录
+### 2. 同步到安卓资源目录
 
 ```bash
 bash scripts/sync-assets.sh
 ```
 
-### 3\. 构建 APK
+### 3. 构建 APK
 
-需要 JDK 17 与 Android SDK（`ANDROID\_HOME` 指向 SDK 根目录）。
+需要 JDK 17 与 Android SDK（`ANDROID_HOME` 指向 SDK 根目录）。
 
 ```bash
 cd ds-app
@@ -187,7 +187,7 @@ cd ds-app
 
 完整步骤、签名发布与常见报错见 [docs/BUILD.md](docs/BUILD.md)。
 
-\---
+---
 
 ## 原生能力桥
 
@@ -195,11 +195,11 @@ cd ds-app
 |-|-|
 |`AndroidMedia.getRecentPhotos` / `getPhotoData`|读取相册最近照片与缩略图（快捷面板、选中即上传）|
 |`AndroidTheme.setStatusBar`|状态栏 / 系统栏配色跟随主题|
-|`AndroidAuth.\*`|Harness 账号登录、令牌、资料与余额|
+|`AndroidAuth.*`|Harness 账号登录、令牌、资料与余额|
 |`AndroidFile.begin/write/end` 等|导出历史时把 `blob:` 分块写入「下载」目录|
 |`AndroidFile.pickArchive/archiveState`|导入历史：原生选包 → 复制到私有目录 → 前端轮询读取|
 |`AndroidPower.begin/end`|生成期间持有唤醒锁，退后台不中断|
-|`AndroidVoice.\*`|原生录音（AudioRecord）→ WAV → 官方 ASR|
+|`AndroidVoice.*`|原生录音（AudioRecord）→ WAV → 官方 ASR|
 
 ## 
 
@@ -210,7 +210,7 @@ cd ds-app
 * 使用 Harness 账号令牌访问官方接口属于非公开用法，可能随官方策略变化而失效，请自行评估账号风险。
 * 本项目按 MIT 协议「按现状」提供，不对数据丢失、账号异常等后果承担责任。
 
-\---
+---
 
 ## 许可证
 
