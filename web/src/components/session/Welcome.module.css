@@ -1,0 +1,144 @@
+.container {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--message-list-max-width);
+  margin: auto;
+  padding: 0 32px 64px;
+}
+
+.heroArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 36px;
+}
+
+.examples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 340px;
+  margin-top: 26px;
+}
+
+.exampleCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  padding: 13px 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 15px;
+  line-height: 21px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    transform 0.15s var(--ds-ease-in-out);
+}
+
+.exampleCard:active {
+  transform: scale(0.98);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.exampleIcon {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.exampleText {
+  flex: 1;
+  min-width: 0;
+}
+
+.logo {
+  display: block;
+  object-fit: contain;
+  margin-bottom: 20px;
+  animation: logoIn 0.55s var(--ds-ease-in-out) both;
+}
+
+.greeting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--dsw-alias-label-primary);
+}
+
+@keyframes logoIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@media (max-width: 439px) {
+  .greeting {
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 500;
+  }
+}
+
+@media not all and (min-width: 768px) {
+  .container {
+    flex-direction: column;
+  }
+
+  .welcome {
+    flex: 1;
+    min-height: 0;
+    justify-content: flex-end;
+    max-width: none;
+    margin: 0;
+    padding: 0 16px env(safe-area-inset-bottom);
+  }
+
+  .heroArea {
+    margin: auto 0;
+  }
+
+  .logo {
+    margin-bottom: 16px;
+  }
+
+  .caveat {
+    flex-shrink: 0;
+    width: 100%;
+    padding: 6px 0;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--dsw-alias-label-tertiary);
+    user-select: none;
+  }
+}

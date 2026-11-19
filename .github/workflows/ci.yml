@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    name: Web 类型检查与构建
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 启用 pnpm
+        run: corepack enable
+      - name: 安装依赖
+        run: corepack pnpm install --frozen-lockfile
+      - name: 类型检查
+        run: corepack pnpm type
+      - name: 构建
+        run: corepack pnpm build

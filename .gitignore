@@ -1,0 +1,37 @@
+# 前端
+web/node_modules/
+web/dist/
+web/.rspack/
+web/*.log
+web/.cache/
+
+# 安卓
+ds-app/.gradle/
+ds-app/build/
+ds-app/app/build/
+ds-app/.kotlin/
+ds-app/local.properties
+ds-app/app/src/main/assets/www/
+ds-app/captures/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 环境与密钥
+.env
+.env.*
+!.env.example
+*.pem
+
+# 其他
+*.log
+*.zip
+!docs/samples/*.zip

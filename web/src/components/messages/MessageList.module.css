@@ -1,0 +1,103 @@
+.container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-color: var(--scroll-color) transparent;
+}
+
+.scroll {
+  display: contents;
+}
+
+@media not all and (min-width: 768px) {
+  .container {
+    overflow: hidden;
+    scrollbar-gutter: auto;
+  }
+
+  .scroll {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-color: var(--scroll-color) transparent;
+  }
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: calc(var(--message-list-max-width) - 2 * var(--message-list-padding-horizontal));
+  max-width: calc(100% - 40px);
+  margin: 0 auto;
+  padding-bottom: 24px;
+
+  > * {
+    animation: messageIn 0.32s var(--ds-ease-in-out) both;
+  }
+}
+
+/* 移动端消息间距更宽松 */
+@media not all and (min-width: 768px) {
+  .column {
+    gap: 22px;
+    max-width: calc(100% - 28px);
+    padding-bottom: 16px;
+  }
+}
+
+.scrollButton {
+  position: absolute;
+  right: 16px;
+  bottom: 112px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  animation: scrollButtonIn 0.2s var(--ds-ease-in-out);
+  transition: transform var(--ds-transition-duration) var(--ds-ease-in-out);
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scrollButtonIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

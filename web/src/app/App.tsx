@@ -1,0 +1,369 @@
+import { useEffect, useRef, useState } from 'react'
+import { useTranslate } from '../i18n/index.js'
+import { useSettings } from '../services/settings.js'
+import { setupAccount } from '../services/account.js'
+import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
+import {
+  bindChatPersistence,
+  continueReply,
+  initChat,
+  retrySaveSessions,
+  selectSession,
+  useChatStore,
+} from '../services/chat/store.js'
+import { canContinueReply } from '../services/chat/reply.js'
+import { runBackHandler } from '../services/backStack.js'
+import { SearchPanel } from '../components/search/SearchPanel.js'
+import { closeSearchPanel, useSearchPanel } from '../components/search/searchPanelState.js'
+import { SessionView } from '../components/session/SessionView.js'
+import { MobileHeader } from '../components/session/MobileHeader.js'
+import { Welcome } from '../components/session/Welcome.js'
+import {
+  closeSettings,
+  ensureApiKey,
+  useSettingsDialog,
+} from '../components/settings/settingsDialogState.js'
+import { SettingsDialog } from '../components/settings/SettingsDialog.js'
+import { Toast } from '../components/base/Toast.js'
+import { showToast } from '../components/base/toastState.js'
+import { onUploadNotice } from '../services/attachments.js'
+import { Button } from '../components/base/Button.js'
+import { stopReadAloud } from '../services/speech/readAloud.js'
+import { CollapsedSider } from '../components/sider/CollapsedSider.js'
+import {
+  closeMobileSider,
+  openMobileSider,
+  useMobileSider,
+} from '../components/sider/mobileSiderState.js'
+import { MobileSider, Sider } from '../components/sider/Sider.js'
+import styles from './App.module.css'
+
+export const App = () => {
+  const t = useTranslate()
+  const isMobile = useIsMobile()
+  const locale = useSettings((state) => state.locale)
+  const fontScale = useSettings((state) => state.fontScale)
+  // 移动端侧边栏以独立抽屉管理开合状态
+  const siderCollapsed = useSettings((state) => state.siderCollapsed) && !isMobile
+  const ready = useChatStore((state) => state.ready)
+  const initError = useChatStore((state) => state.initError)
+  const saveError = useChatStore((state) => Object.values(state.sessionSaveErrors).some(Boolean))
+  const importingHistory = useChatStore((state) => state.importingHistory)
+  const session = useChatStore((state) =>
+    state.activeId !== null && Object.hasOwn(state.sessionCache, state.activeId)
+      ? state.sessionCache[state.activeId]
+      : undefined
+  )
+  const sessionLoadError = useChatStore((state) =>
+    state.activeId === null ? false : state.sessionLoadErrors[state.activeId] === true
+  )
+  const frameRef = useMobileViewport(isMobile)
+  const streaming = useChatStore((state) =>
+    state.activeId === null ? false : Object.hasOwn(state.streaming, state.activeId)
+  )
+  const activeId = useChatStore((state) => state.activeId)
+  const siderOpen = useMobileSider((state) => state.open)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+
+  usePreventPageScroll(isMobile)
+
+  // 点击消息 / 附件里的图片，全屏预览
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (!target || target.tagName !== 'IMG') {
+        return
+      }
+      const img = target as HTMLImageElement
+      const inContent =
+        img.closest('[class*="main-content"]') !== null ||
+        img.closest('[class*="attachments"]') !== null ||
+        img.closest('[class*="attachment"]') !== null
+      if (!inContent || !img.src) {
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      setPreviewImage(img.src)
+    }
+    document.addEventListener('click', handler, true)
+    return () => document.removeEventListener('click', handler, true)
+  }, [])
+
+  // 移动端手势：右滑拉出侧边栏、侧边栏内左滑收起。
+  // 只在「这一下手势不是给内容用的」时候生效：选中文字、输入框、图片查看/编辑、
+  // 横向可滚动的公式/表格/代码块/缩略图条，都不抢手势。
+  useEffect(() => {
+    if (!isMobile) {
+      return
+    }
+    let startX = 0
+    let startY = 0
+    let blocked = false
+
+    const ownsHorizontalGesture = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) {
+        return false
+      }
+      if (target.closest('input, textarea, [contenteditable="true"], canvas, [data-ds-no-swipe]')) {
+        return true
+      }
+      for (
+        let element: Element | null = target;
+        element && element !== document.documentElement;
+        element = element.parentElement
+      ) {
+        const style = getComputedStyle(element)
+        const overflowX = element.scrollWidth - element.clientWidth
+        // 已经能横向滚动的容器：滑动属于它自己
+        if (overflowX > 4 && /auto|scroll/.test(style.overflowX)) {
+          return true
+        }
+        // 内容比视口宽（超长公式、宽表格、横向代码）：留给内容
+        if (overflowX > 4 && element.clientWidth >= window.innerWidth * 0.6) {
+          return true
+        }
+      }
+      return false
+    }
+
+    const hasTextSelection = () => {
+      const selection = window.getSelection()
+      return selection !== null && selection.toString().trim().length > 0
+    }
+
+    const onStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        blocked = true
+        return
+      }
+      const touch = event.touches[0]
+      startX = touch.clientX
+      startY = touch.clientY
+      blocked = hasTextSelection() || ownsHorizontalGesture(event.target)
+    }
+
+    const onEnd = (event: TouchEvent) => {
+      const owned = blocked
+      blocked = false
+      if (owned) {
+        return
+      }
+      const touch = event.changedTouches[0]
+      const dx = touch.clientX - startX
+      const dy = touch.clientY - startY
+      // 必须明显是水平手势，且滑动距离足够
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) {
+        return
+      }
+      // 有弹层 / 预览 / 设置时不要把滑动当成开合侧边栏
+      if (document.querySelector('[role="dialog"], [data-ds-no-swipe]')) {
+        return
+      }
+      // 有弹层 / 预览 / 设置时不要把滑动当成开合侧边栏
+      if (document.querySelector('[role="dialog"], [data-ds-no-swipe]')) {
+        return
+      }
+      const open = useMobileSider.getState().open
+      if (!open && dx > 0) {
+        openMobileSider()
+      } else if (open && dx < 0) {
+        closeMobileSider()
+      }
+    }
+
+    window.addEventListener('touchstart', onStart, { passive: true })
+    window.addEventListener('touchend', onEnd, { passive: true })
+    const onCancel = () => {
+      blocked = false
+    }
+    window.addEventListener('touchcancel', onCancel)
+    return () => {
+      window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchend', onEnd)
+      window.removeEventListener('touchcancel', onCancel)
+    }
+  }, [isMobile])
+
+  useEffect(() => {
+    document.documentElement.lang = locale
+  }, [locale])
+
+  // 字号缩放交给原生 WebView 的 textZoom：只放大文字，不缩放布局，底部不会被裁掉
+  useEffect(() => {
+    const bridge = (
+      window as unknown as { AndroidTheme?: { setTextZoom: (percent: number) => void } }
+    ).AndroidTheme
+    bridge?.setTextZoom(Math.round(fontScale * 100))
+  }, [fontScale])
+
+  // 文件数、存储空间达到上限时，附件上只显示「上传失败」，原因用 toast 说明
+  useEffect(() => onUploadNotice(showToast), [])
+  useEffect(bindChatPersistence, [])
+
+  // 搜索结果面板只属于当前会话
+  useEffect(closeSearchPanel, [activeId])
+  // 切换会话时停止朗读
+  useEffect(stopReadAloud, [activeId])
+  // 移动端选中会话、切换布局后收起抽屉
+  useEffect(closeMobileSider, [activeId, isMobile])
+
+  useEffect(() => {
+    void initChat()
+    setupAccount()
+    // 首次打开先在设置里输入 API Key
+    ensureApiKey()
+  }, [])
+
+  // 退到后台被打断的回答：回到前台自动续写一次，不用用户手动点
+  const resumedRef = useRef(new Set<string>())
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') {
+        return
+      }
+      const state = useChatStore.getState()
+      const id = state.activeId
+      const session = id === null ? undefined : state.sessionCache[id]
+      if (id === null || !session) {
+        return
+      }
+      const last = [...session.messages].reverse().find((message) => message.role === 'assistant')
+      if (!last || last.status !== 'error') {
+        return
+      }
+      const kind = last.error?.kind
+      if (kind !== 'interrupted' && kind !== 'network') {
+        return
+      }
+      if (!canContinueReply(last) || Object.hasOwn(state.streaming, id)) {
+        return
+      }
+      const key = `${id}:${last.id}`
+      if (resumedRef.current.has(key)) {
+        return
+      }
+      resumedRef.current.add(key)
+      continueReply(id, last.id)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
+  // 图片预览是否打开（返回键优先关闭它）
+  const previewRef = useRef<string | null>(null)
+  useEffect(() => {
+    previewRef.current = previewImage
+  }, [previewImage])
+
+  // 暴露给原生返回键：优先关闭弹层，返回 true 表示已处理，false 交给原生退出
+  useEffect(() => {
+    const handler = (): boolean => {
+      // 顺序必须按「视觉层级从高到低」：
+      // 全屏图片预览 > 设置弹窗 > 侧边栏 > 搜索面板 > 组件内浮层（编辑器 / 附件预览 / 加号面板）。
+      // 否则底层的加号面板会先把返回吃掉，导致设置界面关不掉。
+      if (previewRef.current !== null) {
+        setPreviewImage(null)
+        return true
+      }
+      if (useSettingsDialog.getState().open) {
+        closeSettings()
+        return true
+      }
+      if (useMobileSider.getState().open) {
+        closeMobileSider()
+        return true
+      }
+      if (useSearchPanel.getState().entry) {
+        closeSearchPanel()
+        return true
+      }
+      if (runBackHandler()) {
+        return true
+      }
+      return false
+    }
+    ;(window as unknown as { __dsHandleBack?: () => boolean }).__dsHandleBack = handler
+    return () => {
+      delete (window as unknown as { __dsHandleBack?: () => boolean }).__dsHandleBack
+    }
+  }, [])
+
+  return (
+    <>
+      <div ref={frameRef} className={styles.frame}>
+        {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
+        <main
+          className={styles.main}
+          style={isMobile && siderOpen ? { transform: 'translateX(300px)' } : undefined}
+        >
+          {saveError ? (
+            <div className={styles.saveError} role="alert">
+              <span>{t('sessionSaveFailed')}</span>
+              <Button
+                variant="outlined"
+                size="s"
+                disabled={importingHistory}
+                onClick={retrySaveSessions}
+              >
+                {t('retry')}
+              </Button>
+            </div>
+          ) : null}
+          <div className={styles.content}>
+            {siderCollapsed ? <CollapsedSider /> : null}
+            {!ready || (activeId !== null && !session) ? (
+              <div className={styles.loadingView}>
+                {isMobile ? <MobileHeader /> : null}
+                <div className={styles.loadingState} role="status" aria-live="polite">
+                  <span>
+                    {(!ready ? initError : sessionLoadError)
+                      ? t(!ready ? 'sessionListLoadFailed' : 'sessionLoadFailed')
+                      : t('sessionLoading')}
+                  </span>
+                  {(!ready ? initError : sessionLoadError) ? (
+                    <Button
+                      variant="outlined"
+                      size="m"
+                      onClick={() => {
+                        if (!ready) {
+                          void initChat()
+                        } else if (activeId !== null) {
+                          selectSession(activeId)
+                        }
+                      }}
+                    >
+                      {t('retry')}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : session ? (
+              <SessionView
+                session={session}
+                streaming={streaming}
+                siderCollapsed={siderCollapsed}
+              />
+            ) : (
+              <Welcome />
+            )}
+          </div>
+        </main>
+        <SearchPanel />
+      </div>
+      <SettingsDialog />
+      {previewImage ? (
+        <div
+          className={styles.imagePreview}
+          role="dialog"
+          aria-modal="true"
+          data-ds-no-swipe=""
+          onClick={() => setPreviewImage(null)}
+        >
+          <img src={previewImage} alt="" data-ds-no-swipe="" />
+        </div>
+      ) : null}
+      <Toast />
+    </>
+  )
+}
