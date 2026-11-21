@@ -684,7 +684,7 @@ const getAppVersion = (): string => {
   } catch {
     /* 回退到默认 */
   }
-  return '0.4.1'
+  return '0.4.2'
 }
 
 type UpdateState = 'idle' | 'checking' | 'latest' | 'available' | 'error'

@@ -218,7 +218,6 @@ export const en = {
   accountAuthorizing: 'Waiting…',
   accountUnnamed: 'DeepSeek user',
   accountBalance: 'Balance',
-  accountBonus: 'Bonus',
   accountBalanceUnknown: 'Loading balance',
   accountRefreshing: 'Refreshing…',
   accountSignOut: 'Sign out',

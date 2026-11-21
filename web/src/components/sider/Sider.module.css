@@ -472,8 +472,8 @@
 
 .accountMeta {
   overflow: hidden;
-  font-size: 11px;
-  line-height: 15px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -515,8 +515,8 @@
   }
 
   .accountMeta {
-    font-size: 12px;
-    line-height: 17px;
+    font-size: 13px;
+    line-height: 18px;
   }
 }
 

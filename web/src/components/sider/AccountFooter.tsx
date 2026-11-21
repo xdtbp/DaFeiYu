@@ -23,8 +23,8 @@ export const AccountFooter = () => {
   }
 
   if (status === 'signed-in') {
-    const amount = totalBalance(balance)
-    const bonusAmount = totalBalance(bonus)
+    // 余额与赠金合并成一个数，避免侧边栏变窄后文字被省略；充值 / 赠金明细见设置页余额卡片
+    const merged = totalBalance([...balance, ...bonus])
     return (
       <div className={styles.account}>
         <button
@@ -47,10 +47,9 @@ export const AccountFooter = () => {
             <span className={styles.accountMeta}>
               {refreshing
                 ? t('accountRefreshing')
-                : amount
-                  ? `${t('accountBalance')} ${amount}`
+                : merged
+                  ? `${t('accountBalance')} ${merged}`
                   : t('accountBalanceUnknown')}
-              {bonusAmount && !refreshing ? ` · ${t('accountBonus')} ${bonusAmount}` : ''}
             </span>
           </span>
         </button>

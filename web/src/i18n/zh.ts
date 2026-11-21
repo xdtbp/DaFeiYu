@@ -209,7 +209,6 @@ export const zh = {
   accountAuthorizing: '等待授权…',
   accountUnnamed: 'DeepSeek 用户',
   accountBalance: '余额',
-  accountBonus: '赠送',
   accountBalanceUnknown: '余额获取中',
   accountRefreshing: '刷新中…',
   accountSignOut: '退出',
