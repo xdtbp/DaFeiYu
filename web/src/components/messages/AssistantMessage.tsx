@@ -4,6 +4,8 @@ import { memo } from 'react'
 import { IconRefreshOutline16, IconWarningOutline16 } from '../base/icons.js'
 import { describeReply } from '../../services/chat/describe.js'
 import { canContinueReply } from '../../services/chat/reply.js'
+import { estimateCost, totalInputTokens } from '../../services/chat/cost.js'
+import { formatCost, formatTokens } from '../../utils/format.js'
 import { continueReply, regenerateReply } from '../../services/chat/store.js'
 import { stopReadAloud } from '../../services/speech/readAloud.js'
 import type { AssistantMessage as AssistantMessageType } from '../../services/chat/types.js'
@@ -159,9 +161,10 @@ export const AssistantMessage = memo(function AssistantMessage({
           </div>
           {message.usage ? (
             <span className={styles.usage}>
-              {t('usageTokens', {
-                input: message.usage.input_tokens,
-                output: message.usage.output_tokens,
+              {t('usageTokensCost', {
+                input: formatTokens(totalInputTokens(message.usage)),
+                output: formatTokens(message.usage.output_tokens),
+                cost: formatCost(estimateCost(message.usage, message.model)),
               })}
             </span>
           ) : null}

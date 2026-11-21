@@ -31,6 +31,39 @@ const useFileUrl = (id: string) => {
   return fileUrl?.id === id ? fileUrl.url : undefined
 }
 
+/** blob 转 base64，交给原生用系统应用打开 */
+const blobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const comma = dataUrl.indexOf(',')
+      resolve(comma >= 0 ? dataUrl.slice(comma + 1) : '')
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+
+/** 打开附件：优先交给原生用系统应用打开，没有原生能力时退回新窗口 */
+const openMessageFile = async (file: FileAttachment, url: string) => {
+  const bridge = (
+    window as unknown as {
+      AndroidFile?: { openFile?: (base64: string, name: string, mime: string) => void }
+    }
+  ).AndroidFile
+  if (bridge?.openFile) {
+    try {
+      const blob = await fetch(url).then((response) => response.blob())
+      const base64 = await blobToBase64(blob)
+      bridge.openFile(base64, file.name, file.mimeType ?? '')
+      return
+    } catch {
+      /* 原生打开失败时退回新窗口 */
+    }
+  }
+  window.open(url, '_blank', 'noreferrer')
+}
+
 /** 历史或失效附件的补传状态：只在还没有 serverId 时显示 */
 const useUploadState = (file: FileAttachment) =>
   useUploads((state) => {
@@ -134,14 +167,14 @@ export const MessageFile = ({
       )
     }
 
-    // 正常态：链接到原件
+    // 正常态：点击进入全屏预览（由 App 的全局图片点击监听接管，这里阻止 blob 导航）
     return url ? (
       <a
         className={clsx(styles.image, styles.imageThumb)}
         href={url}
-        target="_blank"
-        rel="noreferrer"
         title={file.name}
+        data-ds-image-preview=""
+        onClick={(event) => event.preventDefault()}
       >
         {preview}
       </a>
@@ -158,7 +191,7 @@ export const MessageFile = ({
       status={uploading ? 'uploading' : failed ? 'error' : 'done'}
       error={errorText}
       onRetry={retry ?? undefined}
-      onOpen={url && !upload ? () => window.open(url, '_blank', 'noreferrer') : undefined}
+      onOpen={url && !upload ? () => void openMessageFile(file, url) : undefined}
     />
   )
 }

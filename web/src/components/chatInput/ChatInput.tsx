@@ -291,6 +291,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
           className={clsx(styles.textarea, recording && isMobile && styles.textareaHidden)}
           placeholder={t('chatInputPlaceholderChat')}
           rows={2}
+          enterKeyHint="enter"
           // 移动端不自动聚焦，避免一打开就弹出键盘
           autoFocus={!isMobile}
           disabled={importingHistory}
@@ -301,12 +302,6 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
             if (isMobile && event.button === 0 && document.activeElement !== event.currentTarget) {
               event.preventDefault()
               event.currentTarget.focus({ preventScroll: true })
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-              event.preventDefault()
-              send()
             }
           }}
           onPaste={(event) => {
@@ -355,13 +350,17 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
             status={voice.status}
             disabled={!voice.available}
             seconds={voice.seconds}
-            onClick={() => {
-              if (
-                voice.status !== 'idle' ||
-                (!useChatStore.getState().importingHistory && ensureApiKey())
-              ) {
-                void voice.toggle()
+            onStart={() => {
+              if (!useChatStore.getState().importingHistory && ensureApiKey()) {
+                void voice.start()
               }
+            }}
+            onFinish={() => {
+              void voice.finish()
+            }}
+            onCancel={() => {
+              voice.cancel()
+              showToast({ key: 'voiceCancelled' })
             }}
           />
           <IconButton

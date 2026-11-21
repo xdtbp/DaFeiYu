@@ -314,3 +314,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 「仅展示最新内容」：思考区限高约 6 行，全部内容在框内滚动，并保持贴底显示最新 */
+.stepsLatest {
+  /* 思考内容为 14px/24px，6 行 = 144px */
+  max-height: 144px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-color) transparent;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 100%);
+}

@@ -9,12 +9,19 @@ export type SettingsSection = 'general' | 'data'
 export const useSettingsDialog = create(() => ({
   open: false,
   section: 'data' as SettingsSection,
+  /** 「关于软件」弹窗叠在设置之上，返回时先关它 */
+  aboutOpen: false,
 }))
 
 export const openSettings = (section: SettingsSection) =>
   useSettingsDialog.setState({ open: true, section })
 
-export const closeSettings = () => useSettingsDialog.setState({ open: false })
+export const closeSettings = () =>
+  useSettingsDialog.setState({ open: false, aboutOpen: false })
+
+export const openAbout = () => useSettingsDialog.setState({ aboutOpen: true })
+
+export const closeAbout = () => useSettingsDialog.setState({ aboutOpen: false })
 
 /**
  * 发消息前确认「有可用的凭据」：

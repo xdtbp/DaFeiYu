@@ -1,6 +1,6 @@
 import { useTranslate } from '../../i18n/index.js'
 import clsx from 'clsx'
-import { memo, useEffect, useState, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   IconBrowseOutline16,
   IconBrowseWarningOutline16,
@@ -66,11 +66,29 @@ export const ReplyArea = memo(function ReplyArea({
   hasResponse: boolean
 }) {
   useTranslate()
-  // 默认折叠时只显示「已思考（用时 N 秒）」标题，点一下才展开过程
-  const collapseThinking = useSettings((state) => state.collapseThinking)
-  const [open, setOpen] = useState(!collapseThinking)
+  // 思考过程展示：折叠 / 完整展开 / 仅展示最新部分
+  const thinkingDisplay = useSettings((state) => state.thinkingDisplay)
+  const latestOnly = thinkingDisplay === 'latest'
+  const [open, setOpen] = useState(thinkingDisplay !== 'collapsed')
+  const stepsRef = useRef<HTMLDivElement>(null)
   const titleActive = streaming && !hasResponse
   useTicker(titleActive, 1000)
+
+  // 切换展示方式时同步展开状态：折叠 → 收起，其余 → 展开
+  useEffect(() => {
+    setOpen(thinkingDisplay !== 'collapsed')
+  }, [thinkingDisplay])
+
+  // 「仅展示最新」时保持滚动在底部，正在生成的内容始终可见
+  useEffect(() => {
+    if (!latestOnly || !open) {
+      return
+    }
+    const element = stepsRef.current
+    if (element) {
+      element.scrollTop = element.scrollHeight
+    }
+  }, [view.steps, latestOnly, open])
   if (view.steps.length === 0 && !(message.thinking && streaming)) {
     return null
   }
@@ -90,7 +108,7 @@ export const ReplyArea = memo(function ReplyArea({
         </div>
       ) : null}
       {open || !title ? (
-        <div className={styles.steps}>
+        <div ref={stepsRef} className={clsx(styles.steps, latestOnly && styles.stepsLatest)}>
           {view.steps.map((step, index) => (
             <StepItem
               key={stepKey(step, index)}

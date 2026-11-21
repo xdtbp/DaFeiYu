@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createId } from '../../utils/id.js'
+import { refreshAccount } from '../account.js'
 import { ApiError, streamMessage } from '../api/client.js'
 import { beginStreamKeepAlive, endStreamKeepAlive } from '../power.js'
 import type { ChatModel, CreateMessageRequest } from '../api/types.js'
@@ -1100,5 +1101,9 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
       ),
     }))
     persist(sessionId)
+    // 每次正常输出完毕后刷新一次余额，让侧边栏余额与本次消耗保持同步
+    if (reply.status === 'done') {
+      refreshAccount()
+    }
   }
 }

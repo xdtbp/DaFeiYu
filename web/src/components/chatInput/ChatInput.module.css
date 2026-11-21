@@ -333,7 +333,9 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 2px 2px;
-  animation: attachPanelIn 0.18s var(--ds-ease-in-out);
+  transform-origin: bottom center;
+  animation: attachPanelIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity;
 }
 
 .recentRow {
@@ -346,11 +348,11 @@
 .recentItem {
   position: relative;
   flex-shrink: 0;
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   padding: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--dsw-specific-selector);
   cursor: pointer;
@@ -373,15 +375,18 @@
   flex: 1;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 10px 4px;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 6px;
   border: none;
   border-radius: 14px;
   background: var(--dsw-specific-selector);
   font: inherit;
   cursor: pointer;
   user-select: none;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    transform 0.15s var(--ds-ease-in-out);
 }
 
 .attachAction:hover {
@@ -402,12 +407,12 @@
 @keyframes attachPanelIn {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(10px) scale(0.98);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 

@@ -5,12 +5,61 @@ export type Theme = 'light' | 'dark'
 
 const query = window.matchMedia('(prefers-color-scheme: dark)')
 
-const subscribeOsTheme = (listener: () => void) => {
-  query.addEventListener('change', listener)
-  return () => query.removeEventListener('change', listener)
+type NativeThemeBridge = {
+  applyTheme: (background: string, dark: boolean) => void
+  setTextZoom: (percent: number) => void
+  isSystemDark?: () => boolean
 }
 
-const getOsTheme = (): Theme => (query.matches ? 'dark' : 'light')
+const nativeTheme = () =>
+  (window as unknown as { AndroidTheme?: NativeThemeBridge }).AndroidTheme
+
+/** 读取系统深浅色：原生壳优先（WebView 的 prefers-color-scheme 在固定亮色主题下不跟随系统） */
+const readOsTheme = (): Theme => {
+  const native = nativeTheme()
+  if (native?.isSystemDark) {
+    try {
+      return native.isSystemDark() ? 'dark' : 'light'
+    } catch {
+      /* 回退到媒体查询 */
+    }
+  }
+  return query.matches ? 'dark' : 'light'
+}
+
+let osTheme: Theme = readOsTheme()
+
+const osListeners = new Set<() => void>()
+
+const setOsTheme = (theme: Theme) => {
+  if (theme !== osTheme) {
+    osTheme = theme
+    for (const listener of osListeners) {
+      listener()
+    }
+  }
+}
+
+const subscribeOsTheme = (listener: () => void) => {
+  osListeners.add(listener)
+  if (osListeners.size === 1) {
+    query.addEventListener('change', onMediaQueryChange)
+  }
+  return () => {
+    osListeners.delete(listener)
+    if (osListeners.size === 0) {
+      query.removeEventListener('change', onMediaQueryChange)
+    }
+  }
+}
+
+const onMediaQueryChange = () => setOsTheme(query.matches ? 'dark' : 'light')
+
+// 原生在系统暗色模式变化时回调（onConfigurationChanged）
+;(window as unknown as { __dsSystemDarkChange?: (dark: boolean) => void }).__dsSystemDarkChange =
+  (dark: boolean) => setOsTheme(dark ? 'dark' : 'light')
+
+const getOsTheme = (): Theme => osTheme
 
 const resolveTheme = (preference: ThemePreference, osTheme: Theme): Theme =>
   preference === 'system' ? osTheme : preference
@@ -21,14 +70,6 @@ export const useTheme = (): Theme => {
   const osTheme = useSyncExternalStore(subscribeOsTheme, getOsTheme)
   return resolveTheme(preference, osTheme)
 }
-
-type NativeThemeBridge = {
-  applyTheme: (background: string, dark: boolean) => void
-  setTextZoom: (percent: number) => void
-}
-
-const nativeTheme = () =>
-  (window as unknown as { AndroidTheme?: NativeThemeBridge }).AndroidTheme
 
 /** rgb(a) 转 #rrggbb，供原生状态栏使用 */
 const toHex = (color: string): string => {
@@ -86,6 +127,6 @@ export const setupTheme = () => {
   if (document.readyState !== 'complete') {
     window.addEventListener('load', syncPageBackground, { once: true })
   }
-  query.addEventListener('change', syncTheme)
+  subscribeOsTheme(syncTheme)
   useSettings.subscribe(syncTheme)
 }

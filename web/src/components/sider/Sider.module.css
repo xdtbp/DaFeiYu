@@ -3,7 +3,7 @@
   flex-direction: column;
   flex-shrink: 0;
   box-sizing: border-box;
-  width: 261px;
+  width: 235px;
   height: 100%;
   padding: 6px 12px 0;
   border-right: 1px solid var(--dsw-alias-border-l1);
@@ -349,7 +349,7 @@
 }
 
 .mobile {
-  width: 300px;
+  width: 270px;
   max-width: calc(100vw - 48px);
 
   .listWrap {
@@ -472,8 +472,8 @@
 
 .accountMeta {
   overflow: hidden;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 11px;
+  line-height: 15px;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -497,7 +497,7 @@
 
 @media not all and (min-width: 768px) {
   .sider {
-    width: 300px;
+    width: 270px;
   }
 
   .account {
@@ -515,8 +515,8 @@
   }
 
   .accountMeta {
-    font-size: 13px;
-    line-height: 18px;
+    font-size: 12px;
+    line-height: 17px;
   }
 }
 

@@ -48,6 +48,8 @@ export const MessageList = ({
   const t = useTranslate()
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const footerRef = useRef<HTMLDivElement>(null)
+  const [footerHeight, setFooterHeight] = useState(0)
   const stickyRef = useRef(true)
   const scrollTopRef = useRef(0)
   const restoreScrollRef = useRef<{ messageId: string; top: number } | null>(null)
@@ -84,6 +86,19 @@ export const MessageList = ({
     observer.observe(scroll)
     return () => observer.disconnect()
   }, [isMobile, scrollToBottom])
+
+  // 聊天框高度变化时同步「滚动到底部」按钮的位置，避免与输入框重叠
+  useLayoutEffect(() => {
+    const footer = footerRef.current
+    if (!footer) {
+      return
+    }
+    const update = () => setFooterHeight(footer.offsetHeight)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(footer)
+    return () => observer.disconnect()
+  }, [])
 
   // 切换版本后将选择器留在原位置，避免回答长短变化导致操作区跳出视口。
   useLayoutEffect(() => {
@@ -184,6 +199,7 @@ export const MessageList = ({
             type="button"
             className={styles.scrollButton}
             aria-label={t('scrollToBottom')}
+            style={{ bottom: footerHeight + 16 }}
             onClick={() => {
               stickyRef.current = true
               const el = scrollRef.current
@@ -196,7 +212,7 @@ export const MessageList = ({
             <IconArrowDown20 />
           </button>
         ) : null}
-        {footer}
+        <div ref={footerRef}>{footer}</div>
       </div>
     </ScrollToBottomContext.Provider>
   )

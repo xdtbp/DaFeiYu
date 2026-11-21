@@ -7,6 +7,7 @@ import {
   IconFollowsystemOutline16,
   IconLightOutline16,
   IconSettingsOutline16,
+  IconTrashOutline16,
   IconUploadOutline14,
 } from '../base/icons.js'
 import {
@@ -27,8 +28,8 @@ import { finishProgress, startProgress, useProgress } from '../../services/chat/
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
   isChineseBrowser,
+  setAppTheme,
   setAuthRoute,
-  setCollapseThinking,
   setModel,
   setFontScale,
   setLocale,
@@ -36,9 +37,12 @@ import {
   setMaxTokens,
   setReasoningEffort,
   setThemePreference,
+  setThinkingDisplay,
   setTtsVoice,
   useSettings,
+  type AppTheme,
   type ThemePreference,
+  type ThinkingDisplay,
 } from '../../services/settings.js'
 import type { ThinkingEffort } from '../../services/api/types.js'
 import { useTranslate, type TranslationKey, type TranslationMessage } from '../../i18n/index.js'
@@ -48,7 +52,26 @@ import { Select } from '../base/Select.js'
 import { showToast } from '../base/toastState.js'
 import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { BalanceCard } from './BalanceCard.js'
-import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
+import {
+  IconSettingBolt,
+  IconSettingFont,
+  IconSettingGlobe,
+  IconSettingInfo,
+  IconSettingLength,
+  IconSettingLocation,
+  IconSettingModel,
+  IconSettingMoon,
+  IconSettingPalette,
+  IconSettingSpeaker,
+  IconSettingThinking,
+} from './settingsIcons.js'
+import {
+  closeAbout,
+  closeSettings,
+  openAbout,
+  useSettingsDialog,
+  type SettingsSection,
+} from './settingsDialogState.js'
 import styles from './Settings.module.css'
 
 /**
@@ -167,14 +190,16 @@ const SettingsContent = () => {
           {section === 'general' ? (
             <>
               <ModelSetting />
+              <AppThemeSetting />
               <ThemeSetting />
               <FontSizeSetting />
               <ReasoningSetting />
               <MaxTokensSetting />
-              <CollapseThinkingSetting />
+              <ThinkingDisplaySetting />
               <LocaleSetting />
               <TtsVoiceSetting />
               <LocationSetting />
+              <AboutSetting />
             </>
           ) : (
             <>
@@ -185,6 +210,7 @@ const SettingsContent = () => {
               <ExportHistory disabled={historyBusy} />
               <HistoryProgress kind="export" />
               <SettingCell
+                icon={<IconTrashOutline16 />}
                 label={t('deleteAllSessions')}
                 status={null}
                 action={
@@ -294,6 +320,7 @@ const LocationSetting = () => {
 
   return (
     <SettingCell
+      icon={<IconSettingLocation />}
       label={t('settingsLocation')}
       status={null}
       className={styles.locationCell}
@@ -352,6 +379,7 @@ const LocaleSetting = () => {
   const locale = useSettings((state) => state.locale)
   return (
     <SettingCell
+      icon={<IconSettingGlobe />}
       label={t('settingsLocalePreference')}
       status={null}
       action={
@@ -375,6 +403,7 @@ const TtsVoiceSetting = () => {
   const ttsVoice = useSettings((state) => state.ttsVoice)
   return (
     <SettingCell
+      icon={<IconSettingSpeaker />}
       label={t('settingsTtsVoice')}
       status={null}
       action={
@@ -438,17 +467,46 @@ const themeOptions: { value: ThemePreference; label: TranslationKey; icon: React
   },
 ]
 
+/** 外观主题：官方 DeepSeek 风格 / 大肥鱼自有品牌 */
+const AppThemeSetting = () => {
+  const t = useTranslate()
+  const appTheme = useSettings((state) => state.appTheme)
+  return (
+    <SettingCell
+      icon={<IconSettingPalette />}
+      label={t('settingsAppTheme')}
+      status={null}
+      action={
+        <Select
+          ariaLabel={t('settingsAppTheme')}
+          value={appTheme}
+          options={[
+            { value: 'official', label: t('appThemeOfficial') },
+            { value: 'dafeiyu', label: t('appThemeDafeiyu') },
+          ]}
+          onChange={(value) => setAppTheme(value as AppTheme)}
+        />
+      }
+    />
+  )
+}
+
 /**
- * 主题项：标题下方浅色 / 深色 / 跟随系统三个选块。
+ * 深色设置：标题下方浅色 / 深色 / 跟随系统三个选块。
  * 与下方语言选项连续排列。
  */
 const ThemeSetting = () => {
   const t = useTranslate()
   const themePreference = useSettings((state) => state.themePreference)
-  const label = t('avatarMenuSettingsDialogThemeItemLabel')
+  const label = t('settingsDarkMode')
   return (
     <div className={styles.theme}>
-      {label}
+      <div className={styles.themeTitle}>
+        <span className={styles.cellIcon}>
+          <IconSettingMoon />
+        </span>
+        {label}
+      </div>
       <div role="radiogroup" aria-label={label} className={styles.themeOptions}>
         {themeOptions.map((option) => (
           <button
@@ -477,6 +535,7 @@ const FontSizeSetting = () => {
   const fontScale = useSettings((state) => state.fontScale)
   return (
     <SettingCell
+      icon={<IconSettingFont />}
       label={t('settingsFontSize')}
       status={null}
       action={
@@ -502,6 +561,7 @@ const ReasoningSetting = () => {
   const effort = useSettings((state) => state.reasoningEffort)
   return (
     <SettingCell
+      icon={<IconSettingBolt />}
       label={t('settingsReasoningEffort')}
       status={null}
       action={
@@ -548,6 +608,7 @@ const ModelSetting = () => {
       : null
   return (
     <SettingCell
+      icon={<IconSettingModel />}
       label={t('settingsModel')}
       status={warning}
       action={<Select ariaLabel={t('settingsModel')} value={value} options={options} onChange={onChange} />}
@@ -555,23 +616,25 @@ const ModelSetting = () => {
   )
 }
 
-/** 思考过程默认折叠：只显示「已思考（用时 N 秒）」，点标题展开 */
-const CollapseThinkingSetting = () => {
+/** 思考过程展示：折叠 / 展开 / 仅展示最新部分（限高滚动） */
+const ThinkingDisplaySetting = () => {
   const t = useTranslate()
-  const collapseThinking = useSettings((state) => state.collapseThinking)
+  const thinkingDisplay = useSettings((state) => state.thinkingDisplay)
   return (
     <SettingCell
-      label={t('settingsCollapseThinking')}
+      icon={<IconSettingThinking />}
+      label={t('settingsThinkingDisplay')}
       status={null}
       action={
         <Select
-          ariaLabel={t('settingsCollapseThinking')}
-          value={collapseThinking ? 'on' : 'off'}
+          ariaLabel={t('settingsThinkingDisplay')}
+          value={thinkingDisplay}
           options={[
-            { value: 'on', label: t('collapseThinkingOn') },
-            { value: 'off', label: t('collapseThinkingOff') },
+            { value: 'collapsed', label: t('thinkingDisplayCollapsed') },
+            { value: 'full', label: t('thinkingDisplayFull') },
+            { value: 'latest', label: t('thinkingDisplayLatest') },
           ]}
-          onChange={(value) => setCollapseThinking(value === 'on')}
+          onChange={(value) => setThinkingDisplay(value as ThinkingDisplay)}
         />
       }
     />
@@ -583,6 +646,7 @@ const MaxTokensSetting = () => {
   const maxTokens = useSettings((state) => state.maxTokens)
   return (
     <SettingCell
+      icon={<IconSettingLength />}
       label={t('settingsMaxTokens')}
       status={null}
       action={
@@ -603,6 +667,135 @@ const MaxTokensSetting = () => {
   )
 }
 
+/** GitHub 仓库信息，用于「关于软件」与检查更新 */
+const GITHUB_OWNER = 'xdtbp'
+const GITHUB_REPO = 'DaFeiYu'
+const GITHUB_HOME = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`
+const DEV_AVATAR = `https://github.com/${GITHUB_OWNER}.png`
+
+/** 当前版本号：优先从原生壳读取 versionName，回退到固定值 */
+const getAppVersion = (): string => {
+  const bridge = (window as unknown as { AndroidApp?: { version?: () => string } }).AndroidApp
+  try {
+    const version = bridge?.version?.()
+    if (version) {
+      return version
+    }
+  } catch {
+    /* 回退到默认 */
+  }
+  return '0.4.1'
+}
+
+type UpdateState = 'idle' | 'checking' | 'latest' | 'available' | 'error'
+
+/** 语义化版本比较：a > b 返回正数，a < b 返回负数，相等返回 0 */
+const compareVersion = (a: string, b: string): number => {
+  const left = a.split('.').map((part) => Number.parseInt(part, 10) || 0)
+  const right = b.split('.').map((part) => Number.parseInt(part, 10) || 0)
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0)
+    if (diff !== 0) {
+      return diff
+    }
+  }
+  return 0
+}
+
+/** 检查更新：GitHub 最新 Release 的 tag 与当前版本按语义化版本比较 */
+const checkUpdate = async (): Promise<{ latest: boolean; version: string; url: string }> => {
+  const response = await fetch(
+    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
+  )
+  if (!response.ok) {
+    throw new Error(String(response.status))
+  }
+  const data = (await response.json()) as { tag_name?: string; html_url?: string }
+  const version = (data.tag_name ?? '').replace(/^v/, '')
+  return {
+    // 线上版本不高于当前版本即视为最新（本地比线上新时也成立）
+    latest: compareVersion(version, getAppVersion()) <= 0,
+    version,
+    url: data.html_url ?? GITHUB_HOME,
+  }
+}
+
+/** 关于软件：通用设置最底部，弹窗展示开发者、项目、版本与免责声明，可检查更新 */
+const AboutSetting = () => {
+  const t = useTranslate()
+  const aboutOpen = useSettingsDialog((state) => state.aboutOpen)
+  return (
+    <>
+      <SettingCell
+        icon={<IconSettingInfo />}
+        label={t('settingsAbout')}
+        status={null}
+        action={
+          <Button variant="outlined" size="m" className={styles.cellButton} onClick={openAbout}>
+            {t('about')}
+          </Button>
+        }
+      />
+      {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}
+    </>
+  )
+}
+
+const AboutDialog = ({ onClose }: { onClose: () => void }) => {
+  const t = useTranslate()
+  const [update, setUpdate] = useState<UpdateState>('idle')
+  const [latestVersion, setLatestVersion] = useState('')
+  const [releaseUrl, setReleaseUrl] = useState(GITHUB_HOME)
+
+  const onCheck = async () => {
+    setUpdate('checking')
+    try {
+      const result = await checkUpdate()
+      setLatestVersion(result.version)
+      setReleaseUrl(result.url)
+      setUpdate(result.latest ? 'latest' : 'available')
+    } catch {
+      setUpdate('error')
+    }
+  }
+
+  return (
+    <Modal title={t('settingsAbout')} closable className={styles.aboutDialog} onClose={onClose}>
+      <div className={styles.about}>
+        <img className={styles.aboutAvatar} src={DEV_AVATAR} alt="" />
+        <div className={styles.aboutName}>{t('aboutDeveloperName')}</div>
+        <a className={styles.aboutProject} href={GITHUB_HOME} target="_blank" rel="noreferrer">
+          {t('aboutProject')}
+        </a>
+        <div className={styles.aboutVersion}>{t('aboutVersion', { version: getAppVersion() })}</div>
+        <p className={styles.aboutDisclaimer}>{t('aboutDisclaimer')}</p>
+        <Button
+          variant="outlined"
+          size="m"
+          className={styles.aboutCheckButton}
+          disabled={update === 'checking'}
+          onClick={() => void onCheck()}
+        >
+          {update === 'checking' ? t('aboutChecking') : t('aboutCheckUpdate')}
+        </Button>
+        {update === 'latest' ? (
+          <div className={styles.aboutUpdate}>
+            {t('aboutLatest', { version: latestVersion || getAppVersion() })}
+          </div>
+        ) : null}
+        {update === 'available' ? (
+          <a className={styles.aboutUpdate} href={releaseUrl} target="_blank" rel="noreferrer">
+            {t('aboutAvailable', { version: latestVersion })}
+          </a>
+        ) : null}
+        {update === 'error' ? (
+          <div className={styles.aboutUpdate}>{t('aboutCheckFailed')}</div>
+        ) : null}
+      </div>
+    </Modal>
+  )
+}
+
 /** `reason` 为失败原因的文案 key，展示时按当前语言翻译后填入 `message` 参数。 */
 type Status = (TranslationMessage & { error?: boolean; reason?: TranslationKey }) | null
 
@@ -616,12 +809,14 @@ const errorStatus = (key: TranslationKey, error: unknown): Status => ({
 })
 
 const SettingCell = ({
+  icon,
   label,
   description,
   status,
   action,
   className,
 }: {
+  icon?: ReactNode
   label: string
   description?: string
   status: Status
@@ -631,6 +826,7 @@ const SettingCell = ({
   const t = useTranslate()
   return (
     <div className={clsx(styles.cell, styles.row, className)}>
+      {icon ? <span className={styles.cellIcon}>{icon}</span> : null}
       <div className={styles.text}>
         <div className={styles.label}>{label}</div>
         {status || description ? (
@@ -776,6 +972,7 @@ const ImportHistory = ({
 
   return (
     <SettingCell
+      icon={<IconUploadOutline14 />}
       label={t('historyImport')}
       description={t('historyImportDescription')}
       status={historyImport.status}
@@ -837,6 +1034,7 @@ const ExportHistory = ({ disabled }: { disabled: boolean }) => {
 
   return (
     <SettingCell
+      icon={<IconDownloadOutline16 />}
       label={t('exportAllLabel')}
       description={t('historyExportDescription')}
       status={status}

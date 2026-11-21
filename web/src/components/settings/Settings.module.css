@@ -96,7 +96,29 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding-right: 48px;
+  padding-right: 8px;
+}
+
+/* 设置项左侧图标：圆角方形底 + 线性图标 */
+.cellIcon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background-color: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 深色设置的标题行：图标 + 文字 */
+.themeTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .label {
@@ -165,9 +187,9 @@
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
-  min-width: 128px;
+  min-width: 104px;
   height: 82px;
-  padding: 21px 32px;
+  padding: 16px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
   background-color: transparent;
@@ -559,4 +581,64 @@
   .content {
     animation: none;
   }
+}
+
+/* 关于软件弹窗 */
+.aboutDialog {
+  max-width: 360px;
+}
+
+.about {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  text-align: center;
+}
+
+.aboutAvatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.aboutName {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.aboutProject {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--dsw-alias-brand-text);
+  text-decoration: none;
+}
+
+.aboutVersion {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.aboutDisclaimer {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.aboutCheckButton {
+  margin-top: 4px;
+}
+
+.aboutUpdate {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-brand-text);
+  text-decoration: none;
 }

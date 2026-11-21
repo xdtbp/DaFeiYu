@@ -1,12 +1,12 @@
 :root {
   --message-list-max-width: 840px;
-  --message-list-padding-horizontal: 44px;
+  --message-list-padding-horizontal: 42px;
 }
 
 @media (max-width: 1023px) {
   :root {
     --message-list-max-width: 712px;
-    --message-list-padding-horizontal: 36px;
+    --message-list-padding-horizontal: 34px;
   }
 }
 

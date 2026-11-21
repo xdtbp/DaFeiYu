@@ -108,6 +108,7 @@ class MainActivity : Activity() {
         webView.addJavascriptInterface(FileBridge(), "AndroidFile")
         webView.addJavascriptInterface(PowerBridge(), "AndroidPower")
         webView.addJavascriptInterface(VoiceBridge(), "AndroidVoice")
+        webView.addJavascriptInterface(AppBridge(), "AndroidApp")
 
         // 注意顺序：路径前缀按注册顺序匹配，"/local/" 必须排在兜底的 "/" 之前
         val assetLoader = WebViewAssetLoader.Builder()
@@ -462,6 +463,21 @@ class MainActivity : Activity() {
         ViewCompat.requestApplyInsets(webView)
     }
 
+    /** 系统深色模式切换时通知网页，避免 Activity 重建（manifest 里已声明 uiMode） */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::webView.isInitialized) {
+            return
+        }
+        val dark =
+            newConfig.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+        webView.evaluateJavascript(
+            "window.__dsSystemDarkChange && window.__dsSystemDarkChange($dark)",
+            null
+        )
+    }
+
     override fun onPause() {
         // 不调用 webView.onPause()：生成中的流要留在后台继续跑
         super.onPause()
@@ -478,6 +494,14 @@ class MainActivity : Activity() {
 
     /** 主题与字号：由网页在切换主题 / 字号时调用，保证状态栏与内容背景一致 */
     inner class ThemeBridge {
+        /** 系统当前是否为深色模式，供网页的「跟随系统」读取 */
+        @android.webkit.JavascriptInterface
+        fun isSystemDark(): Boolean {
+            val night =
+                resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+            return night == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        }
+
         @android.webkit.JavascriptInterface
         fun applyTheme(background: String, dark: Boolean) {
             runOnUiThread {
@@ -502,6 +526,48 @@ class MainActivity : Activity() {
         fun setTextZoom(percent: Int) {
             runOnUiThread {
                 webView.settings.textZoom = percent.coerceIn(60, 200)
+            }
+        }
+    }
+
+    /** 应用元信息：版本号等，供「关于软件」展示 */
+    inner class AppBridge {
+        @android.webkit.JavascriptInterface
+        fun version(): String = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "0.0.0"
+        } catch (_: Exception) {
+            "0.0.0"
+        }
+
+        /**
+         * 切换桌面图标与名称：启用对应的 activity-alias，禁用另一个。
+         * DONT_KILL_APP 保证当前会话不重启。
+         */
+        @android.webkit.JavascriptInterface
+        fun setLauncherTheme(official: Boolean) {
+            runOnUiThread {
+                try {
+                    val pm = packageManager
+                    val dafeiyu = android.content.ComponentName(
+                        this@MainActivity,
+                        "$packageName.LauncherDafeiyu",
+                    )
+                    val officialAlias = android.content.ComponentName(
+                        this@MainActivity,
+                        "$packageName.LauncherOfficial",
+                    )
+                    pm.setComponentEnabledSetting(
+                        if (official) dafeiyu else officialAlias,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP,
+                    )
+                    pm.setComponentEnabledSetting(
+                        if (official) officialAlias else dafeiyu,
+                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        android.content.pm.PackageManager.DONT_KILL_APP,
+                    )
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -563,6 +629,32 @@ class MainActivity : Activity() {
 
     /** 保存网页生成的下载文件（历史记录 ZIP）到系统「下载」目录，按块写入以控制内存 */
     inner class FileBridge {
+        /** 把网页传来的附件写入缓存目录，交给系统默认应用打开（预览已发送的照片 / 文件） */
+        @android.webkit.JavascriptInterface
+        fun openFile(base64: String, name: String, mime: String) {
+            runOnUiThread {
+                try {
+                    val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                    val dir = File(cacheDir, "open").apply { mkdirs() }
+                    val safeName = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifEmpty { "file" }
+                    val target = File(dir, safeName)
+                    target.writeBytes(bytes)
+                    val uri = FileProvider.getUriForFile(
+                        this@MainActivity,
+                        "$packageName.fileprovider",
+                        target,
+                    )
+                    val type = mime.ifBlank { "application/octet-stream" }
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, type)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {
+                }
+            }
+        }
+
         /** 打开系统文件选择器挑选历史 ZIP，选完由原生复制并回调前端 */
         @android.webkit.JavascriptInterface
         fun pickArchive() {

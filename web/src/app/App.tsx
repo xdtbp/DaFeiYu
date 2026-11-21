@@ -19,6 +19,7 @@ import { SessionView } from '../components/session/SessionView.js'
 import { MobileHeader } from '../components/session/MobileHeader.js'
 import { Welcome } from '../components/session/Welcome.js'
 import {
+  closeAbout,
   closeSettings,
   ensureApiKey,
   useSettingsDialog,
@@ -43,6 +44,7 @@ export const App = () => {
   const isMobile = useIsMobile()
   const locale = useSettings((state) => state.locale)
   const fontScale = useSettings((state) => state.fontScale)
+  const appTheme = useSettings((state) => state.appTheme)
   // 移动端侧边栏以独立抽屉管理开合状态
   const siderCollapsed = useSettings((state) => state.siderCollapsed) && !isMobile
   const ready = useChatStore((state) => state.ready)
@@ -78,7 +80,8 @@ export const App = () => {
       const inContent =
         img.closest('[class*="main-content"]') !== null ||
         img.closest('[class*="attachments"]') !== null ||
-        img.closest('[class*="attachment"]') !== null
+        img.closest('[class*="attachment"]') !== null ||
+        img.closest('[data-ds-image-preview]') !== null
       if (!inContent || !img.src) {
         return
       }
@@ -197,6 +200,16 @@ export const App = () => {
     bridge?.setTextZoom(Math.round(fontScale * 100))
   }, [fontScale])
 
+  // 外观主题切换时同步桌面图标与名称（原生 activity-alias）
+  useEffect(() => {
+    const bridge = (
+      window as unknown as {
+        AndroidApp?: { setLauncherTheme?: (official: boolean) => void }
+      }
+    ).AndroidApp
+    bridge?.setLauncherTheme?.(appTheme === 'official')
+  }, [appTheme])
+
   // 文件数、存储空间达到上限时，附件上只显示「上传失败」，原因用 toast 说明
   useEffect(() => onUploadNotice(showToast), [])
   useEffect(bindChatPersistence, [])
@@ -266,6 +279,11 @@ export const App = () => {
         setPreviewImage(null)
         return true
       }
+      // 「关于软件」叠在设置之上，先关它再关设置
+      if (useSettingsDialog.getState().aboutOpen) {
+        closeAbout()
+        return true
+      }
       if (useSettingsDialog.getState().open) {
         closeSettings()
         return true
@@ -295,7 +313,7 @@ export const App = () => {
         {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
         <main
           className={styles.main}
-          style={isMobile && siderOpen ? { transform: 'translateX(300px)' } : undefined}
+          style={isMobile && siderOpen ? { transform: 'translateX(270px)' } : undefined}
         >
           {saveError ? (
             <div className={styles.saveError} role="alert">
