@@ -1,6 +1,7 @@
 .timer {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   flex-shrink: 0;
   font-size: 12px;
   line-height: 17px;
@@ -9,9 +10,18 @@
   white-space: nowrap;
 }
 
-/* 窄屏空间不足，读秒整体不展示 */
+/* 「上滑取消」提示：颜色比读秒更淡，不抢视觉 */
+.cancelHint {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 窄屏空间不足：隐藏读秒，只保留「上滑取消」提示 */
 @media not all and (min-width: 768px) {
   .timer {
+    font-size: 11px;
+  }
+
+  .timerText {
     display: none;
   }
 }

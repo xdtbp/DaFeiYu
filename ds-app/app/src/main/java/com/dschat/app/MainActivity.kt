@@ -46,6 +46,9 @@ class MainActivity : Activity() {
     /** 等待系统麦克风权限结果的网页授权请求 */
     private var pendingMicRequest: PermissionRequest? = null
 
+    /** 引导页逐项申请时，记录当前等待结果的权限名 */
+    private var pendingAppPermission: String? = null
+
     /** 防止返回被连点触发两次 finish */
     @Volatile
     private var backPending = false
@@ -109,6 +112,7 @@ class MainActivity : Activity() {
         webView.addJavascriptInterface(PowerBridge(), "AndroidPower")
         webView.addJavascriptInterface(VoiceBridge(), "AndroidVoice")
         webView.addJavascriptInterface(AppBridge(), "AndroidApp")
+        normalizeLauncher()
 
         // 注意顺序：路径前缀按注册顺序匹配，"/local/" 必须排在兜底的 "/" 之前
         val assetLoader = WebViewAssetLoader.Builder()
@@ -253,7 +257,41 @@ class MainActivity : Activity() {
             }
         }
 
-        requestRuntimePermissions()
+    }
+
+    /**
+     * 统一桌面入口：只保留 LauncherDafeiyu（官方图标 + DeepSeek 名称），
+     * 关闭历史别名 LauncherOfficial。旧版本升级上来时可能残留启用的别名，这里兜底一次。
+     */
+    private fun normalizeLauncher() {
+        try {
+            val pm = packageManager
+            val keep = android.content.ComponentName(this, "$packageName.LauncherDafeiyu")
+            val legacy = android.content.ComponentName(this, "$packageName.LauncherOfficial")
+            pm.setComponentEnabledSetting(
+                keep,
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP,
+            )
+            pm.setComponentEnabledSetting(
+                legacy,
+                android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                android.content.pm.PackageManager.DONT_KILL_APP,
+            )
+        } catch (_: Exception) {
+        }
+    }
+
+    /** 引导页申请的三类权限映射到系统权限名 */
+    private fun permissionOf(name: String): String? = when (name) {
+        "mic" -> Manifest.permission.RECORD_AUDIO
+        "camera" -> Manifest.permission.CAMERA
+        "media" -> if (android.os.Build.VERSION.SDK_INT >= 33) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        else -> null
     }
 
     /**
@@ -306,34 +344,6 @@ class MainActivity : Activity() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
 
-    private fun requestRuntimePermissions() {
-        val permissions = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            permissions.add(Manifest.permission.CAMERA)
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            permissions.add(Manifest.permission.RECORD_AUDIO)
-        }
-        val mediaPermission = if (Build.VERSION.SDK_INT >= 33) {
-            Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-        if (ContextCompat.checkSelfPermission(this, mediaPermission) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            permissions.add(mediaPermission)
-        }
-        if (permissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), REQ_PERMISSION)
-        }
-    }
-
-
     /** 依据页面的 accept / multiple 构造系统文档选择器 */
     private fun buildFilePickerIntent(params: WebChromeClient.FileChooserParams): Intent {
         val multiple = params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
@@ -361,6 +371,21 @@ class MainActivity : Activity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_APP_PERMISSION) {
+            val name = pendingAppPermission
+            pendingAppPermission = null
+            val granted = grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (name != null) {
+                webView.post {
+                    webView.evaluateJavascript(
+                        "window.__dsPermission && window.__dsPermission('$name', $granted)",
+                        null
+                    )
+                }
+            }
+            return
+        }
         if (requestCode == REQ_MIC) {
             val request = pendingMicRequest
             pendingMicRequest = null
@@ -539,37 +564,39 @@ class MainActivity : Activity() {
             "0.0.0"
         }
 
-        /**
-         * 切换桌面图标与名称：启用对应的 activity-alias，禁用另一个。
-         * DONT_KILL_APP 保证当前会话不重启。
-         */
+        /** 不同意免责声明时退出应用 */
         @android.webkit.JavascriptInterface
-        fun setLauncherTheme(official: Boolean) {
+        fun exitApp() {
             runOnUiThread {
-                try {
-                    val pm = packageManager
-                    val dafeiyu = android.content.ComponentName(
-                        this@MainActivity,
-                        "$packageName.LauncherDafeiyu",
-                    )
-                    val officialAlias = android.content.ComponentName(
-                        this@MainActivity,
-                        "$packageName.LauncherOfficial",
-                    )
-                    pm.setComponentEnabledSetting(
-                        if (official) dafeiyu else officialAlias,
-                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        android.content.pm.PackageManager.DONT_KILL_APP,
-                    )
-                    pm.setComponentEnabledSetting(
-                        if (official) officialAlias else dafeiyu,
-                        android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                        android.content.pm.PackageManager.DONT_KILL_APP,
-                    )
-                } catch (_: Exception) {
-                }
+                finishAffinity()
             }
         }
+
+        /** 逐项申请运行时权限（引导页使用）：mic / camera / media */
+        @android.webkit.JavascriptInterface
+        fun requestPermission(name: String) {
+            val permission = permissionOf(name) ?: return
+            pendingAppPermission = name
+            runOnUiThread {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    this@MainActivity,
+                    arrayOf(permission),
+                    REQ_APP_PERMISSION,
+                )
+            }
+        }
+
+        /** 查询某项运行时权限当前状态：granted / denied */
+        @android.webkit.JavascriptInterface
+        fun permissionState(name: String): String {
+            val permission = permissionOf(name) ?: return "granted"
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                this@MainActivity,
+                permission,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            return if (granted) "granted" else "denied"
+        }
+
     }
 
     /** Harness 账号：登录 / 刷新 / 退出 */
@@ -1146,6 +1173,7 @@ class MainActivity : Activity() {
         private const val REQ_CAMERA = 1002
         private const val REQ_PERMISSION = 1003
         private const val REQ_MIC = 1005
+        private const val REQ_APP_PERMISSION = 1006
         private const val RECORD_RATE = 16000
         private const val MAX_RECORD_MS = 120_000L
         private const val REQ_PICK_ARCHIVE = 1004

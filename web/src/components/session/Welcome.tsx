@@ -1,7 +1,5 @@
 import { useIsMobile } from '../../app/viewport.js'
 import { useTranslate } from '../../i18n/index.js'
-import { useSettings } from '../../services/settings.js'
-import coverLogo from '../../assets/cover.png'
 import deepseekLogo from '../../assets/deepseek.svg'
 import { ChatInput } from '../chatInput/ChatInput.js'
 import { MobileHeader } from './MobileHeader.js'
@@ -11,7 +9,6 @@ import styles from './Welcome.module.css'
 export const Welcome = () => {
   const t = useTranslate()
   const isMobile = useIsMobile()
-  const official = useSettings((state) => state.appTheme) === 'official'
   const size = isMobile ? 92 : 104
   return (
     <div className={styles.container}>
@@ -20,13 +17,11 @@ export const Welcome = () => {
         <div className={styles.heroArea}>
           <img
             className={styles.logo}
-            src={official ? deepseekLogo : coverLogo}
+            src={deepseekLogo}
             alt=""
             style={{ width: size, height: size }}
           />
-          <div className={styles.greeting}>
-            {official ? t('welcomeMessageOfficial') : t('welcomeMessageChat250808')}
-          </div>
+          <div className={styles.greeting}>{t('welcomeMessageOfficial')}</div>
         </div>
         <ChatInput sessionId={null} />
         {isMobile ? <div className={styles.caveat}>{t('contentCaveat')}</div> : null}

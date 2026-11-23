@@ -24,19 +24,6 @@ export const IconSettingModel = () => (
   </svg>
 )
 
-/** 主题：调色板 */
-export const IconSettingPalette = () => (
-  <svg {...base}>
-    <path
-      d="M8 1.6a6.4 6.4 0 1 0 0 12.8c.9 0 1.4-.6 1.4-1.3 0-.4-.1-.7-.4-1-.2-.3-.4-.6-.4-1 0-.7.6-1.2 1.3-1.2h1.1A4 4 0 0 0 14.4 6C14.4 3.6 11.5 1.6 8 1.6Z"
-      {...stroke}
-    />
-    <circle cx="5" cy="6.2" r="0.85" fill="currentColor" />
-    <circle cx="8" cy="4.5" r="0.85" fill="currentColor" />
-    <circle cx="11" cy="6.2" r="0.85" fill="currentColor" />
-  </svg>
-)
-
 /** 深色设置：月亮 */
 export const IconSettingMoon = () => (
   <svg {...base}>
@@ -64,13 +51,6 @@ export const IconSettingBolt = () => (
 export const IconSettingLength = () => (
   <svg {...base}>
     <path d="M2 8h12M2 8l2.6-2.6M2 8l2.6 2.6M14 8l-2.6-2.6M14 8l-2.6 2.6" {...stroke} />
-  </svg>
-)
-
-/** 折叠：向下箭头 */
-export const IconSettingChevron = () => (
-  <svg {...base}>
-    <path d="M3.6 6 8 10.2 12.4 6" {...stroke} />
   </svg>
 )
 
@@ -114,5 +94,15 @@ export const IconSettingInfo = () => (
     <circle cx="8" cy="8" r="6.2" {...stroke} />
     <path d="M8 7.4v3.8" {...stroke} />
     <circle cx="8" cy="4.9" r="0.75" fill="currentColor" />
+  </svg>
+)
+
+/** 充值：钱包 */
+export const IconSettingWallet = () => (
+  <svg {...base}>
+    <path d="M2.2 5.4h11.6v7a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1Z" {...stroke} />
+    <path d="M2.2 5.4 10.6 2.6a.8.8 0 0 1 1 .5l.4 2.3" {...stroke} />
+    <path d="M10.4 9.4h3.4" {...stroke} />
+    <circle cx="6" cy="9.4" r="0.7" fill="currentColor" />
   </svg>
 )

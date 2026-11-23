@@ -8,9 +8,6 @@ export type Locale = 'zh-CN' | 'en-US'
 /** 主题偏好；默认跟随系统 */
 export type ThemePreference = 'light' | 'dark' | 'system'
 
-/** 应用外观主题：官方 DeepSeek 风格 / 大肥鱼自有品牌 */
-export type AppTheme = 'official' | 'dafeiyu'
-
 /** 思考过程展示：折叠 / 完整展开 / 仅展示最新部分（限高滚动） */
 export type ThinkingDisplay = 'collapsed' | 'full' | 'latest'
 
@@ -42,8 +39,6 @@ type Settings = {
   /** 官方模型选择 */
   model: ChatModelId
   siderCollapsed: boolean
-  /** 应用外观主题 */
-  appTheme: AppTheme
   /** 思考过程展示方式 */
   thinkingDisplay: ThinkingDisplay
 }
@@ -64,7 +59,6 @@ const KEYS = {
   authRoute: 'chat-demo:auth-route',
   model: 'chat-demo:model',
   siderCollapsed: 'chat-demo:sider-collapsed',
-  appTheme: 'chat-demo:app-theme',
   thinkingDisplay: 'chat-demo:thinking-display',
 } as const
 
@@ -125,10 +119,6 @@ const initialThemePreference = (): ThemePreference => {
 /** 未保存过时使用服务端默认音色 stella（海星） */
 const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
 
-/** 应用外观主题默认官方 DeepSeek 风格 */
-const initialAppTheme = (): AppTheme =>
-  read(KEYS.appTheme) === 'dafeiyu' ? 'dafeiyu' : 'official'
-
 /** 思考过程默认「仅展示最新部分」；旧版「默认折叠」开关迁移到三态 */
 const initialThinkingDisplay = (): ThinkingDisplay => {
   const saved = read(KEYS.thinkingDisplay)
@@ -179,10 +169,9 @@ export const useSettings = create<Settings>(() => ({
   reasoningEffort: initialReasoningEffort(),
   maxTokens: initialMaxTokens(),
   fontScale: initialFontScale(),
-  authRoute: read(KEYS.authRoute) === 'account' ? 'account' : 'apikey',
+  authRoute: read(KEYS.authRoute) === 'apikey' ? 'apikey' : 'account',
   model: read(KEYS.model) === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
-  appTheme: initialAppTheme(),
   thinkingDisplay: initialThinkingDisplay(),
 }))
 
@@ -250,11 +239,6 @@ export const setModel = (model: ChatModelId) => {
 export const setSiderCollapsed = (siderCollapsed: boolean) => {
   write(KEYS.siderCollapsed, String(siderCollapsed))
   useSettings.setState({ siderCollapsed })
-}
-
-export const setAppTheme = (appTheme: AppTheme) => {
-  write(KEYS.appTheme, appTheme)
-  useSettings.setState({ appTheme })
 }
 
 export const setThinkingDisplay = (thinkingDisplay: ThinkingDisplay) => {

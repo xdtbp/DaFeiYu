@@ -89,6 +89,7 @@ const apply = (payload: NativeAccountPayload) => {
     return
   }
   if (status === 'signed-in') {
+    clearTimeout(refreshTimer)
     let token = ''
     try {
       token = bridge()?.token?.() ?? ''
@@ -150,6 +151,8 @@ export const signInAccount = () => {
   }, 180_000)
 }
 
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
+
 export const refreshAccount = () => {
   const native = bridge()
   if (!native) {
@@ -157,6 +160,13 @@ export const refreshAccount = () => {
   }
   useAccount.setState({ refreshing: true })
   native.refresh()
+  // 原生迟迟不回调时结束「刷新中」，避免界面一直停在加载态
+  clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => {
+    if (useAccount.getState().refreshing) {
+      useAccount.setState({ refreshing: false })
+    }
+  }, 10_000)
 }
 
 export const signOutAccount = () => {

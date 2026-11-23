@@ -109,6 +109,22 @@ export const getBalance = async (
 }
 
 /**
+ * 只用 API Key 查询余额。
+ * 与 getBalance 不同，这里不判断「账号通道」，用于登录账号的同时展示 API Key 所属账户的余额。
+ */
+export const getBalanceByApiKey = async (
+  apiKey: string,
+  signal?: AbortSignal
+): Promise<BalanceResponse> => {
+  const response = await request(`${API_ORIGIN}/user/balance`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal,
+  })
+  return (await response.json()) as BalanceResponse
+}
+
+/**
  * POST /anthropic/v1/files 上传附件（不设过期时间，会话里的历史附件一直可用）。
  * purpose 为 null 时不传该字段（图片）；purpose 必须排在 file 之前。
  */

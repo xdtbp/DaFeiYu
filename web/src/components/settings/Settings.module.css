@@ -1,4 +1,4 @@
-.dialog {
+.dialog.dialog {
   --modal-header-gap: 7px;
   width: 760px;
   height: 500px;
@@ -339,7 +339,7 @@
     font-size: 15px;
   }
 
-  .dialog {
+  .dialog.dialog {
     align-self: flex-end;
     width: 100%;
     max-width: none;
@@ -491,13 +491,6 @@
   }
 }
 
-/* 移动端设置是底部上滑面板，用独立的滑入动画 */
-@media not all and (min-width: 768px) {
-  .dialog {
-    animation: settingsSheetIn 0.28s cubic-bezier(0.22, 0.9, 0.3, 1.02) both;
-  }
-}
-
 @keyframes settingsSheetIn {
   from {
     opacity: 0;
@@ -641,4 +634,21 @@
   line-height: 20px;
   color: var(--dsw-alias-brand-text);
   text-decoration: none;
+}
+
+/* 充值入口：链接样式的次级按钮 */
+.topUpLink {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.topUpLink:active {
+  background-color: var(--dsw-alias-interactive-bg-hover);
 }

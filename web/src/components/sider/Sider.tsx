@@ -6,7 +6,7 @@ import {
   IconSearchOutline16,
   IconSettingsOutline16,
 } from '../base/icons.js'
-import { setSiderCollapsed, useSettings } from '../../services/settings.js'
+import { setSiderCollapsed } from '../../services/settings.js'
 import { groupSessions } from '../../services/chat/sessionGroups.js'
 import { removeSession, selectSession, useChatStore } from '../../services/chat/store.js'
 import { searchHistory, type SearchMatch } from '../../services/chat/search.js'
@@ -27,8 +27,7 @@ const PAGE_SIZE = 40
 /** 展开的侧边栏：名称与收起按钮、搜索历史、开启新对话、按时间分组的会话列表、底部设置；移动端放在抽屉里 */
 export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const t = useTranslate()
-  const official = useSettings((state) => state.appTheme) === 'official'
-  const appName = official ? 'DeepSeek' : t('appName')
+  const appName = t('appName')
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
   const [now, setNow] = useState(Date.now)

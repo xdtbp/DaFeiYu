@@ -25,8 +25,8 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_launcher_official"
+        android:roundIcon="@mipmap/ic_launcher_official"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
@@ -34,7 +34,7 @@
         android:theme="@style/Theme.DSChat"
         tools:targetApi="34">
 
-        <!-- 界面容器：桌面入口由下面的 activity-alias 提供，以便随主题切换图标 -->
+        <!-- 界面容器：桌面入口由下面的 activity-alias 提供 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -42,13 +42,13 @@
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.DSChat" />
 
-        <!-- 大肥鱼主题的桌面图标（默认启用） -->
+        <!-- 唯一的桌面入口。保留旧组件名，避免升级后桌面图标丢失 -->
         <activity-alias
             android:name=".LauncherDafeiyu"
             android:targetActivity=".MainActivity"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:roundIcon="@mipmap/ic_launcher"
+            android:icon="@mipmap/ic_launcher_official"
+            android:roundIcon="@mipmap/ic_launcher_official"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -56,7 +56,7 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- 官方主题的桌面图标（切换到官方主题时启用） -->
+        <!-- 历史入口：仅用于兼容旧版本升级，默认禁用，启动时由 normalizeLauncher 关闭 -->
         <activity-alias
             android:name=".LauncherOfficial"
             android:targetActivity=".MainActivity"
@@ -64,7 +64,7 @@
             android:enabled="false"
             android:icon="@mipmap/ic_launcher_official"
             android:roundIcon="@mipmap/ic_launcher_official"
-            android:label="@string/app_name_official">
+            android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

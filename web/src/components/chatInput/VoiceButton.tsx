@@ -45,7 +45,12 @@ export const VoiceButton = ({
 
   return (
     <>
-      {recording ? <span className={styles.timer}>{t('voiceInputTimer', { seconds })}</span> : null}
+      {recording ? (
+        <span className={styles.timer}>
+          <span className={styles.timerText}>{t('voiceInputTimer', { seconds })}</span>
+          <span className={styles.cancelHint}>{t('voiceSlideToCancel')}</span>
+        </span>
+      ) : null}
       <Tooltip content={label}>
         <button
           type="button"

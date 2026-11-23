@@ -470,6 +470,19 @@
   text-overflow: ellipsis;
 }
 
+/* 同时展示账号与 API 余额时，两行小字紧凑排列 */
+.accountBalances {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* 未登录但配置了 API Key：整行可点击去登录 */
+.accountClickable {
+  cursor: pointer;
+}
+
 .accountMeta {
   overflow: hidden;
   font-size: 12px;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslate } from '../i18n/index.js'
-import { useSettings } from '../services/settings.js'
+import { setAuthRoute, useSettings } from '../services/settings.js'
+import { useAccount } from '../services/account.js'
 import { setupAccount } from '../services/account.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
 import {
@@ -24,6 +25,8 @@ import {
   ensureApiKey,
   useSettingsDialog,
 } from '../components/settings/settingsDialogState.js'
+import { DisclaimerGate, isDisclaimerAccepted } from '../components/onboarding/DisclaimerGate.js'
+import { isOnboarded, Onboarding } from '../components/onboarding/Onboarding.js'
 import { SettingsDialog } from '../components/settings/SettingsDialog.js'
 import { Toast } from '../components/base/Toast.js'
 import { showToast } from '../components/base/toastState.js'
@@ -44,7 +47,14 @@ export const App = () => {
   const isMobile = useIsMobile()
   const locale = useSettings((state) => state.locale)
   const fontScale = useSettings((state) => state.fontScale)
-  const appTheme = useSettings((state) => state.appTheme)
+  const accountStatus = useAccount((state) => state.status)
+  const apiKey = useSettings((state) => state.apiKey)
+  // 启动门槛：先同意免责与权限说明，再决定是否展示首次引导
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(() => isDisclaimerAccepted())
+  // 首次使用引导：完成后写入本地标记，之后不再出现；老用户已配置过 API Key 也不再打扰
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !isOnboarded() && !useSettings.getState().apiKey
+  )
   // 移动端侧边栏以独立抽屉管理开合状态
   const siderCollapsed = useSettings((state) => state.siderCollapsed) && !isMobile
   const ready = useChatStore((state) => state.ready)
@@ -200,16 +210,6 @@ export const App = () => {
     bridge?.setTextZoom(Math.round(fontScale * 100))
   }, [fontScale])
 
-  // 外观主题切换时同步桌面图标与名称（原生 activity-alias）
-  useEffect(() => {
-    const bridge = (
-      window as unknown as {
-        AndroidApp?: { setLauncherTheme?: (official: boolean) => void }
-      }
-    ).AndroidApp
-    bridge?.setLauncherTheme?.(appTheme === 'official')
-  }, [appTheme])
-
   // 文件数、存储空间达到上限时，附件上只显示「上传失败」，原因用 toast 说明
   useEffect(() => onUploadNotice(showToast), [])
   useEffect(bindChatPersistence, [])
@@ -224,9 +224,25 @@ export const App = () => {
   useEffect(() => {
     void initChat()
     setupAccount()
-    // 首次打开先在设置里输入 API Key
-    ensureApiKey()
   }, [])
+
+  // 保证「通道」与可用凭证一致：未登录账号不能走 account，没 Key 不能走 apikey
+  useEffect(() => {
+    const { authRoute } = useSettings.getState()
+    const signedIn = accountStatus === 'signed-in'
+    if (authRoute === 'account' && !signedIn && apiKey) {
+      setAuthRoute('apikey')
+    } else if (authRoute === 'apikey' && !apiKey && signedIn) {
+      setAuthRoute('account')
+    }
+  }, [accountStatus, apiKey])
+
+  // 同意免责且不在引导中时，才检查 API Key，避免弹层被门槛页遮挡
+  useEffect(() => {
+    if (disclaimerAccepted && !showOnboarding) {
+      ensureApiKey()
+    }
+  }, [disclaimerAccepted, showOnboarding])
 
   // 退到后台被打断的回答：回到前台自动续写一次，不用用户手动点
   const resumedRef = useRef(new Set<string>())
@@ -269,9 +285,19 @@ export const App = () => {
     previewRef.current = previewImage
   }, [previewImage])
 
+  // 免责 / 引导等启动门槛展示期间，返回键只消费事件，不退出应用
+  const gateRef = useRef(!disclaimerAccepted || showOnboarding)
+  useEffect(() => {
+    gateRef.current = !disclaimerAccepted || showOnboarding
+  }, [disclaimerAccepted, showOnboarding])
+
   // 暴露给原生返回键：优先关闭弹层，返回 true 表示已处理，false 交给原生退出
   useEffect(() => {
     const handler = (): boolean => {
+      // 引导期间忽略返回键，避免误触直接退出
+      if (gateRef.current) {
+        return true
+      }
       // 顺序必须按「视觉层级从高到低」：
       // 全屏图片预览 > 设置弹窗 > 侧边栏 > 搜索面板 > 组件内浮层（编辑器 / 附件预览 / 加号面板）。
       // 否则底层的加号面板会先把返回吃掉，导致设置界面关不掉。
@@ -369,6 +395,11 @@ export const App = () => {
         </main>
         <SearchPanel />
       </div>
+      {!disclaimerAccepted ? (
+        <DisclaimerGate onAccept={() => setDisclaimerAccepted(true)} />
+      ) : showOnboarding ? (
+        <Onboarding onDone={() => setShowOnboarding(false)} />
+      ) : null}
       <SettingsDialog />
       {previewImage ? (
         <div

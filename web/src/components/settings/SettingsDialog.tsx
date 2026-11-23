@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import {
   IconDarkOutline16,
   IconDataOutline16,
@@ -10,25 +10,15 @@ import {
   IconTrashOutline16,
   IconUploadOutline14,
 } from '../base/icons.js'
-import {
-  BackupError,
-  clearHistory,
-  exportHistory,
-  importHistory,
-} from '../../services/chat/backup.js'
+import { BackupError, clearHistory, exportHistory } from '../../services/chat/backup.js'
 import { useIsMobile } from '../../app/viewport.js'
-import {
-  hasNativeArchivePicker,
-  pickArchiveNative,
-  registerArchiveHandlers,
-} from '../../services/chat/archivePicker.js'
+import { HistoryProgress } from '../history/HistoryProgress.js'
+import { useHistoryImport } from '../history/useHistoryImport.js'
 import { useChatStore } from '../../services/chat/store.js'
 import { useAccount } from '../../services/account.js'
-import { finishProgress, startProgress, useProgress } from '../../services/chat/progress.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
   isChineseBrowser,
-  setAppTheme,
   setAuthRoute,
   setModel,
   setFontScale,
@@ -40,7 +30,6 @@ import {
   setThinkingDisplay,
   setTtsVoice,
   useSettings,
-  type AppTheme,
   type ThemePreference,
   type ThinkingDisplay,
 } from '../../services/settings.js'
@@ -61,9 +50,9 @@ import {
   IconSettingLocation,
   IconSettingModel,
   IconSettingMoon,
-  IconSettingPalette,
   IconSettingSpeaker,
   IconSettingThinking,
+  IconSettingWallet,
 } from './settingsIcons.js'
 import {
   closeAbout,
@@ -190,7 +179,6 @@ const SettingsContent = () => {
           {section === 'general' ? (
             <>
               <ModelSetting />
-              <AppThemeSetting />
               <ThemeSetting />
               <FontSizeSetting />
               <ReasoningSetting />
@@ -205,6 +193,21 @@ const SettingsContent = () => {
             <>
               <ApiKeyField editor={apiKeyEditor} />
               <BalanceCard />
+              <SettingCell
+                icon={<IconSettingWallet />}
+                label={t('settingsTopUp')}
+                status={null}
+                action={
+                  <a
+                    className={styles.topUpLink}
+                    href={TOP_UP_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t('topUp')}
+                  </a>
+                }
+              />
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
               <HistoryProgress kind="import" />
               <ExportHistory disabled={historyBusy} />
@@ -467,30 +470,6 @@ const themeOptions: { value: ThemePreference; label: TranslationKey; icon: React
   },
 ]
 
-/** 外观主题：官方 DeepSeek 风格 / 大肥鱼自有品牌 */
-const AppThemeSetting = () => {
-  const t = useTranslate()
-  const appTheme = useSettings((state) => state.appTheme)
-  return (
-    <SettingCell
-      icon={<IconSettingPalette />}
-      label={t('settingsAppTheme')}
-      status={null}
-      action={
-        <Select
-          ariaLabel={t('settingsAppTheme')}
-          value={appTheme}
-          options={[
-            { value: 'official', label: t('appThemeOfficial') },
-            { value: 'dafeiyu', label: t('appThemeDafeiyu') },
-          ]}
-          onChange={(value) => setAppTheme(value as AppTheme)}
-        />
-      }
-    />
-  )
-}
-
 /**
  * 深色设置：标题下方浅色 / 深色 / 跟随系统三个选块。
  * 与下方语言选项连续排列。
@@ -589,29 +568,67 @@ const ModelSetting = () => {
   const t = useTranslate()
   const authRoute = useSettings((state) => state.authRoute)
   const model = useSettings((state) => state.model)
+  const apiKey = useSettings((state) => state.apiKey)
   const signedIn = useAccount((state) => state.status === 'signed-in')
-  const value = `${authRoute}:${model}`
+  const hasKey = Boolean(apiKey)
+
+  // 只展示当前可用凭证对应的模型：有账号时账号模型排在前面，没配置 Key 就不出现 API Key 模型
   const options = [
-    { value: 'apikey:deepseek-flash', label: `${t('modelSourceApikey')} · DeepSeek-V4.1-Flash` },
-    { value: 'apikey:deepseek-v4-pro', label: `${t('modelSourceApikey')} · DeepSeek-V4-Pro` },
-    { value: 'account:deepseek-flash', label: `${t('modelSourceAccount')} · DeepSeek-V4.1-Flash` },
-    { value: 'account:deepseek-v4-pro', label: `${t('modelSourceAccount')} · DeepSeek-V4-Pro` },
+    ...(signedIn
+      ? [
+          {
+            value: 'account:deepseek-flash',
+            label: `${t('modelSourceAccount')} · DeepSeek-V4.1-Flash`,
+          },
+          { value: 'account:deepseek-v4-pro', label: `${t('modelSourceAccount')} · DeepSeek-V4-Pro` },
+        ]
+      : []),
+    ...(hasKey
+      ? [
+          {
+            value: 'apikey:deepseek-flash',
+            label: `${t('modelSourceApikey')} · DeepSeek-V4.1-Flash`,
+          },
+          { value: 'apikey:deepseek-v4-pro', label: `${t('modelSourceApikey')} · DeepSeek-V4-Pro` },
+        ]
+      : []),
   ]
+
+  if (options.length === 0) {
+    return (
+      <SettingCell
+        icon={<IconSettingModel />}
+        label={t('settingsModel')}
+        status={{ key: 'modelNoCredential', error: true }}
+        action={<span />}
+      />
+    )
+  }
+
+  const preferred = `${authRoute}:${model}`
+  const value = options.some((option) => option.value === preferred)
+    ? preferred
+    : options[0].value
+
   const onChange = (next: string) => {
     const [route, id] = next.split(':')
     setAuthRoute(route === 'account' ? 'account' : 'apikey')
     setModel(id === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash')
   }
-  const warning =
-    authRoute === 'account' && !signedIn
-      ? { key: 'modelAccountNotSignedIn' as const, error: true }
-      : null
+
   return (
     <SettingCell
       icon={<IconSettingModel />}
       label={t('settingsModel')}
-      status={warning}
-      action={<Select ariaLabel={t('settingsModel')} value={value} options={options} onChange={onChange} />}
+      status={null}
+      action={
+        <Select
+          ariaLabel={t('settingsModel')}
+          value={value}
+          options={options}
+          onChange={onChange}
+        />
+      }
     />
   )
 }
@@ -667,6 +684,9 @@ const MaxTokensSetting = () => {
   )
 }
 
+/** DeepSeek 开放平台充值页 */
+const TOP_UP_URL = 'https://platform.deepseek.com/top_up'
+
 /** GitHub 仓库信息，用于「关于软件」与检查更新 */
 const GITHUB_OWNER = 'xdtbp'
 const GITHUB_REPO = 'DaFeiYu'
@@ -684,7 +704,7 @@ const getAppVersion = (): string => {
   } catch {
     /* 回退到默认 */
   }
-  return '0.4.2'
+  return '0.5.0'
 }
 
 type UpdateState = 'idle' | 'checking' | 'latest' | 'available' | 'error'
@@ -843,123 +863,7 @@ const SettingCell = ({
 }
 
 /** 选文件后先提示覆盖；确认后才检查文件并执行导入，任何错误都提示导入失败。 */
-const useHistoryImport = () => {
-  const [file, setFile] = useState<File | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [reading, setReading] = useState(false)
-  const [status, setStatus] = useState<Status>(null)
-  const importing = useRef(false)
-
-  // 原生选择器把选中的 ZIP 复制好之后会回调到这里
-  useEffect(() => {
-    if (!hasNativeArchivePicker()) {
-      return
-    }
-    registerArchiveHandlers({
-      onReady: (picked) => {
-        setReading(false)
-        setStatus(null)
-        setFile(picked)
-        finishProgress()
-      },
-      onError: () => {
-        setReading(false)
-        setStatus({ key: 'historyImportFailed', error: true })
-        finishProgress()
-      },
-      onBusy: (busy) => {
-        setReading(busy)
-        if (busy) {
-          startProgress('reading')
-        } else {
-          finishProgress()
-        }
-      },
-    })
-    return () => registerArchiveHandlers(null)
-  }, [])
-
-  const confirm = async () => {
-    if (!file || importing.current) {
-      return
-    }
-    importing.current = true
-    setFile(null)
-    setBusy(true)
-    setStatus(null)
-    try {
-      const result = await importHistory(file)
-      setStatus(
-        result.skipped > 0
-          ? {
-              key: 'importPartial',
-              params: { count: result.count, skipped: result.skipped },
-            }
-          : {
-              key: result.count === 1 ? 'historyImportedOne' : 'historyImported',
-              params: { count: result.count },
-            }
-      )
-    } catch (error) {
-      // BackupError 带着具体原因（版本过新/内容不完整…），直接展示给用户
-      setStatus({
-        key: error instanceof BackupError ? error.key : 'historyImportFailed',
-        error: true,
-      })
-    } finally {
-      importing.current = false
-      setBusy(false)
-    }
-  }
-
-  const pick = (fallback: () => void) => {
-    if (!hasNativeArchivePicker()) {
-      fallback()
-      return
-    }
-    setStatus({ key: 'importReading' })
-    setReading(true)
-    startProgress('reading')
-    void pickArchiveNative()
-  }
-
-  return {
-    file,
-    busy,
-    reading,
-    status,
-    select: setFile,
-    cancel: () => setFile(null),
-    confirm,
-    pick,
-  }
-}
-
 /** 导入 = 覆盖：用选中文件替换本地全部会话与附件。 */
-/** 导入 / 导出进度条：显示百分比与「已处理/总数」，让用户知道还要等多久 */
-const HistoryProgress = ({ kind }: { kind: 'import' | 'export' }) => {
-  const t = useTranslate()
-  const progress = useProgress()
-  const reading = kind === 'import' && progress.kind === 'reading'
-  if (progress.kind !== kind && !reading) {
-    return null
-  }
-  const percent = Math.round((reading ? 0 : progress.value) * 100)
-  return (
-    <div className={styles.progress}>
-      <div className={styles.progressTrack}>
-        <div
-          className={clsx(styles.progressFill, reading && styles.progressIndeterminate)}
-          style={reading ? undefined : { width: `${percent}%` }}
-        />
-      </div>
-      <span className={styles.progressText}>
-        {reading ? t('importReading') : progress.detail || `${percent}%`}
-      </span>
-    </div>
-  )
-}
-
 const ImportHistory = ({
   historyImport,
   disabled,

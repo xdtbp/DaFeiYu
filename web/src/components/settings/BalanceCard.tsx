@@ -1,72 +1,93 @@
-import { useCallback, useEffect, useState } from 'react'
-import { getBalance } from '../../services/api/client.js'
-import type { BalanceResponse } from '../../services/api/types.js'
-import { useAccount } from '../../services/account.js'
-import { useSettings } from '../../services/settings.js'
 import { useTranslate } from '../../i18n/index.js'
+import { refreshAccount, totalBalance, useAccount } from '../../services/account.js'
+import { useApiBalance } from '../../services/apiBalance.js'
+import { useSettings } from '../../services/settings.js'
 import styles from './Settings.module.css'
 
-/** 账户余额卡片：调用 /user/balance，显示总余额 + 充值/赠送明细，支持手动刷新 */
+/**
+ * 数据管理 → 余额：账户余额与 API 余额分开显示。
+ * - 账户余额来自 Harness 账号登录后返回的钱包
+ * - API 余额固定用 API Key 查询（与当前通道无关）
+ */
 export const BalanceCard = () => {
   const t = useTranslate()
+  const { status, balance, bonus, refreshing } = useAccount()
   const apiKey = useSettings((state) => state.apiKey)
-  // 账号通道没有 API Key，用登录令牌也能查 /user/balance
-  const accountToken = useAccount((state) => state.token)
-  const hasAuth = Boolean(apiKey) || Boolean(accountToken)
-  const [balance, setBalance] = useState<BalanceResponse | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
+  const apiBalance = useApiBalance()
 
-  const refresh = useCallback(async () => {
-    if (!apiKey && !accountToken) {
-      setBalance(null)
-      return
-    }
-    setLoading(true)
-    setError(false)
-    try {
-      setBalance(await getBalance(apiKey ?? ''))
-    } catch {
-      setError(true)
-      setBalance(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [apiKey, accountToken])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  const cny = balance?.balance_infos?.find((item) => item.currency === 'CNY')
+  const signedIn = status === 'signed-in'
+  const hasKey = Boolean(apiKey)
+  const accountTotal = totalBalance(balance)
+  const accountBonus = totalBalance(bonus) || '¥0.00'
 
   return (
-    <div className={styles.cell}>
-      <div className={styles.row}>
-        <div className={styles.text}>
-          <div className={styles.label}>{t('balanceLabel')}</div>
-          {cny ? (
-            <div className={styles.balanceTotal}>¥ {cny.total_balance}</div>
-          ) : (
-            <div className={styles.description}>
-              {loading ? t('balanceLoading') : error ? t('balanceLoadFailed') : t('balanceNotAvailable')}
-            </div>
-          )}
+    <>
+      {/* 账户余额 */}
+      <div className={styles.cell}>
+        <div className={styles.row}>
+          <div className={styles.text}>
+            <div className={styles.label}>{t('balanceLabel')}</div>
+            {signedIn ? (
+              accountTotal ? (
+                <div className={styles.balanceTotal}>{accountTotal}</div>
+              ) : (
+                <div className={styles.description}>
+                  {refreshing ? t('balanceLoading') : t('balanceNotAvailable')}
+                </div>
+              )
+            ) : (
+              <div className={styles.description}>{t('balanceAccountSignedOut')}</div>
+            )}
+          </div>
+          <button
+            type="button"
+            className={styles.confirm}
+            disabled={!signedIn || refreshing}
+            onClick={refreshAccount}
+          >
+            {refreshing ? t('balanceLoading') : t('balanceRefresh')}
+          </button>
         </div>
-        <button
-          type="button"
-          className={styles.confirm}
-          disabled={loading || !hasAuth}
-          onClick={() => void refresh()}
-        >
-          {t('balanceRefresh')}
-        </button>
+        {signedIn && accountTotal ? (
+          <div className={styles.description}>
+            {t('balanceToppedUp')} {accountTotal} · {t('balanceGranted')} {accountBonus}
+          </div>
+        ) : null}
       </div>
-      {cny ? (
-        <div className={styles.description}>
-          {t('balanceToppedUp')} {cny.topped_up_balance} · {t('balanceGranted')} {cny.granted_balance}
+
+      {/* API 余额 */}
+      <div className={styles.cell}>
+        <div className={styles.row}>
+          <div className={styles.text}>
+            <div className={styles.label}>{t('balanceApiLabel')}</div>
+            {!hasKey ? (
+              <div className={styles.description}>{t('balanceApiNotConfigured')}</div>
+            ) : apiBalance.loading ? (
+              <div className={styles.description}>{t('balanceLoading')}</div>
+            ) : apiBalance.total ? (
+              <div className={styles.balanceTotal}>{apiBalance.total}</div>
+            ) : (
+              <div className={styles.description}>
+                {apiBalance.error ? t('balanceFetchFailed') : t('balanceNotAvailable')}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className={styles.confirm}
+            disabled={!hasKey || apiBalance.loading}
+            onClick={() => void apiBalance.refresh()}
+          >
+            {apiBalance.loading ? t('balanceLoading') : t('balanceRefresh')}
+          </button>
         </div>
-      ) : null}
-    </div>
+        {hasKey && apiBalance.total ? (
+          <div className={styles.description}>
+            {t('balanceToppedUp')} {apiBalance.toppedUp || '¥0.00'} · {t('balanceGranted')}{' '}
+            {apiBalance.granted || '¥0.00'}
+          </div>
+        ) : null}
+      </div>
+    </>
   )
 }
