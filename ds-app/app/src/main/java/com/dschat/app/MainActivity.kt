@@ -68,7 +68,10 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WebView.setWebContentsDebuggingEnabled(true)
+        // WebView 调试默认关闭，由「设置 → 关于软件 → WebView 调试」显式打开
+        WebView.setWebContentsDebuggingEnabled(
+            getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_WEBVIEW_DEBUG, false),
+        )
 
         // 自己处理系统栏与输入法内边距，保证内容不会被状态栏或键盘遮挡
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -562,6 +565,27 @@ class MainActivity : Activity() {
             packageManager.getPackageInfo(packageName, 0).versionName ?: "0.0.0"
         } catch (_: Exception) {
             "0.0.0"
+        }
+
+        /** WebView 调试当前是否开启 */
+        @android.webkit.JavascriptInterface
+        fun webviewDebugEnabled(): Boolean =
+            getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_WEBVIEW_DEBUG, false)
+
+        /**
+         * 切换 WebView 调试：写入偏好并立即生效。
+         * 调试会暴露页面内容与网络请求，默认关闭。
+         */
+        @android.webkit.JavascriptInterface
+        fun setWebviewDebug(enabled: Boolean): Boolean {
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_WEBVIEW_DEBUG, enabled)
+                .apply()
+            runOnUiThread {
+                WebView.setWebContentsDebuggingEnabled(enabled)
+            }
+            return enabled
         }
 
         /** 不同意免责声明时退出应用 */
@@ -1173,6 +1197,8 @@ class MainActivity : Activity() {
         private const val REQ_CAMERA = 1002
         private const val REQ_PERMISSION = 1003
         private const val REQ_MIC = 1005
+        private const val PREFS = "ds_settings"
+        private const val KEY_WEBVIEW_DEBUG = "webview_debug"
         private const val REQ_APP_PERMISSION = 1006
         private const val RECORD_RATE = 16000
         private const val MAX_RECORD_MS = 120_000L

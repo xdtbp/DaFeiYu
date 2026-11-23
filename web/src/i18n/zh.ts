@@ -297,4 +297,19 @@ export const zh = {
   permGranted: '已授权',
   permRequest: '申请',
   modelNoCredential: '请先登录账号或配置 API Key',
+  // 启动更新提示
+  updateFoundTitle: '发现新版本',
+  updateFoundDescription: '检测到线上新版本 v{version}，是否前往更新？',
+  updateFoundHint: '更新会打开 GitHub Release 页面，下载 APK 覆盖安装即可，本地对话与设置不会丢失。',
+  updateNow: '立即更新',
+  updateLater: '稍后',
+  updateSkipVersion: '跳过此版本',
+  // WebView 调试
+  settingsWebviewDebug: 'WebView 调试',
+  webviewDebugOn: '已开启，重启后继续生效',
+  webviewDebugOff: '默认关闭，仅排障时开启',
+  webviewDebugUnsupported: '当前环境不支持',
+  webviewDebugWarningTitle: '开启 WebView 调试？',
+  webviewDebugWarningBody: '这个可能存在未知风险，你知道你在做什么的话就打开，否则请不要开启。',
+  webviewDebugConfirm: '仍然开启',
 } as const

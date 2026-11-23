@@ -298,4 +298,18 @@ export const en = {
   permGranted: 'Granted',
   permRequest: 'Allow',
   modelNoCredential: 'Sign in or add an API key first',
+  updateFoundTitle: 'New version available',
+  updateFoundDescription: 'Version v{version} is available online. Update now?',
+  updateFoundHint: 'This opens the GitHub Release page. Download the APK and install it over the current app; chats and settings are kept.',
+  updateNow: 'Update now',
+  updateLater: 'Later',
+  updateSkipVersion: 'Skip this version',
+  settingsWebviewDebug: 'WebView debugging',
+  webviewDebugOn: 'Enabled, stays on after restart',
+  webviewDebugOff: 'Off by default, enable only for troubleshooting',
+  webviewDebugUnsupported: 'Not supported in this environment',
+  webviewDebugWarningTitle: 'Enable WebView debugging?',
+  webviewDebugWarningBody:
+    'This may carry unknown risks. Enable it only if you know exactly what you are doing; otherwise leave it off.',
+  webviewDebugConfirm: 'Enable anyway',
 } satisfies Record<keyof typeof zh, string>

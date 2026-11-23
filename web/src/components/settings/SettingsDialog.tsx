@@ -1,17 +1,25 @@
 import clsx from 'clsx'
 import { useRef, useState, type ReactNode } from 'react'
 import {
-  IconDarkOutline16,
   IconDataOutline16,
   IconDownloadOutline16,
-  IconFollowsystemOutline16,
-  IconLightOutline16,
   IconSettingsOutline16,
   IconTrashOutline16,
   IconUploadOutline14,
 } from '../base/icons.js'
 import { BackupError, clearHistory, exportHistory } from '../../services/chat/backup.js'
 import { useIsMobile } from '../../app/viewport.js'
+import {
+  checkUpdate,
+  GITHUB_HOME,
+  GITHUB_OWNER,
+  getAppVersion,
+} from '../../services/update.js'
+import {
+  setWebviewDebug,
+  webviewDebugEnabled,
+  webviewDebugSupported,
+} from '../../services/webviewDebug.js'
 import { HistoryProgress } from '../history/HistoryProgress.js'
 import { useHistoryImport } from '../history/useHistoryImport.js'
 import { useChatStore } from '../../services/chat/store.js'
@@ -43,6 +51,7 @@ import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { BalanceCard } from './BalanceCard.js'
 import {
   IconSettingBolt,
+  IconSettingDebug,
   IconSettingFont,
   IconSettingGlobe,
   IconSettingInfo,
@@ -187,6 +196,7 @@ const SettingsContent = () => {
               <LocaleSetting />
               <TtsVoiceSetting />
               <LocationSetting />
+              <WebviewDebugSetting />
               <AboutSetting />
             </>
           ) : (
@@ -322,58 +332,58 @@ const LocationSetting = () => {
       : undefined
 
   return (
-    <SettingCell
-      icon={<IconSettingLocation />}
-      label={t('settingsLocation')}
-      status={null}
-      className={styles.locationCell}
-      action={
-        <div className={styles.locationSelectors}>
-          {isChineseBrowser() ? (
-            <>
-              <Select
-                ariaLabel={t('settingsLocationProvince')}
-                className={styles.provinceSelect}
-                value={province?.code ?? ''}
-                placeholder={t('settingsLocationProvince')}
-                options={provinces.map((item) => ({ value: item.code, label: item.name }))}
-                onChange={(value) => {
-                  if (value !== province?.code) {
-                    setLocation({ region: 'CN', province: value })
-                  }
-                }}
-              />
-              <Select
-                ariaLabel={t('settingsLocationCity')}
-                className={styles.citySelect}
-                value={province ? (location?.city ?? '') : ''}
-                disabled={!province?.cities.length}
-                placeholder={t('settingsLocationCity')}
-                options={
-                  province?.cities.map((item) => ({ value: item.code, label: item.name })) ?? []
-                }
-                onChange={(value) => {
-                  if (province) {
-                    setLocation({ region: 'CN', province: province.code, city: value })
-                  }
-                }}
-              />
-            </>
-          ) : (
+    <div className={clsx(styles.cell, styles.locationCell)}>
+      <div className={styles.locationHead}>
+        <span className={styles.cellIcon}>
+          <IconSettingLocation />
+        </span>
+        <div className={styles.label}>{t('settingsLocation')}</div>
+      </div>
+      <div className={styles.locationSelectors}>
+        {isChineseBrowser() ? (
+          <>
             <Select
-              ariaLabel={t('settingsLocationRegion')}
-              className={styles.regionSelect}
-              value={location?.region ?? ''}
-              placeholder={t('settingsLocationRegion')}
-              options={regionCodes
-                .map((code) => ({ value: code, label: getRegionName(code, locale) }))
-                .sort((a, b) => a.label.localeCompare(b.label, locale))}
-              onChange={(value) => setLocation({ region: value })}
+              ariaLabel={t('settingsLocationProvince')}
+              className={styles.provinceSelect}
+              value={province?.code ?? ''}
+              placeholder={t('settingsLocationProvince')}
+              options={provinces.map((item) => ({ value: item.code, label: item.name }))}
+              onChange={(value) => {
+                if (value !== province?.code) {
+                  setLocation({ region: 'CN', province: value })
+                }
+              }}
             />
-          )}
-        </div>
-      }
-    />
+            <Select
+              ariaLabel={t('settingsLocationCity')}
+              className={styles.citySelect}
+              value={province ? (location?.city ?? '') : ''}
+              disabled={!province?.cities.length}
+              placeholder={t('settingsLocationCity')}
+              options={
+                province?.cities.map((item) => ({ value: item.code, label: item.name })) ?? []
+              }
+              onChange={(value) => {
+                if (province) {
+                  setLocation({ region: 'CN', province: province.code, city: value })
+                }
+              }}
+            />
+          </>
+        ) : (
+          <Select
+            ariaLabel={t('settingsLocationRegion')}
+            className={styles.regionSelect}
+            value={location?.region ?? ''}
+            placeholder={t('settingsLocationRegion')}
+            options={regionCodes
+              .map((code) => ({ value: code, label: getRegionName(code, locale) }))
+              .sort((a, b) => a.label.localeCompare(b.label, locale))}
+            onChange={(value) => setLocation({ region: value })}
+          />
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -452,59 +462,44 @@ const ImportConfirm = ({
   )
 }
 
-const themeOptions: { value: ThemePreference; label: TranslationKey; icon: ReactNode }[] = [
-  {
-    value: 'light',
-    label: 'avatarMenuSettingsDialogThemeSelectLightOption',
-    icon: <IconLightOutline16 />,
-  },
-  {
-    value: 'dark',
-    label: 'avatarMenuSettingsDialogThemeSelectDarkOption',
-    icon: <IconDarkOutline16 />,
-  },
-  {
-    value: 'system',
-    label: 'avatarMenuSettingsDialogThemeSelectSystemOption',
-    icon: <IconFollowsystemOutline16 />,
-  },
+const themeOptions: { value: ThemePreference; label: TranslationKey }[] = [
+  { value: 'light', label: 'avatarMenuSettingsDialogThemeSelectLightOption' },
+  { value: 'dark', label: 'avatarMenuSettingsDialogThemeSelectDarkOption' },
+  { value: 'system', label: 'avatarMenuSettingsDialogThemeSelectSystemOption' },
 ]
 
 /**
- * 深色设置：标题下方浅色 / 深色 / 跟随系统三个选块。
- * 与下方语言选项连续排列。
+ * 深色设置：与其它设置项同排，右侧是分段选项卡，省出三张卡片的高度。
  */
 const ThemeSetting = () => {
   const t = useTranslate()
   const themePreference = useSettings((state) => state.themePreference)
   const label = t('settingsDarkMode')
   return (
-    <div className={styles.theme}>
-      <div className={styles.themeTitle}>
-        <span className={styles.cellIcon}>
-          <IconSettingMoon />
-        </span>
-        {label}
-      </div>
-      <div role="radiogroup" aria-label={label} className={styles.themeOptions}>
-        {themeOptions.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={themePreference === option.value}
-            className={clsx(
-              styles.themeOption,
-              themePreference === option.value && styles.themeOptionSelected
-            )}
-            onClick={() => setThemePreference(option.value)}
-          >
-            {option.icon}
-            {t(option.label)}
-          </button>
-        ))}
-      </div>
-    </div>
+    <SettingCell
+      icon={<IconSettingMoon />}
+      label={label}
+      status={null}
+      action={
+        <div role="radiogroup" aria-label={label} className={styles.segmented}>
+          {themeOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={themePreference === option.value}
+              className={clsx(
+                styles.segment,
+                themePreference === option.value && styles.segmentActive
+              )}
+              onClick={() => setThemePreference(option.value)}
+            >
+              {t(option.label)}
+            </button>
+          ))}
+        </div>
+      }
+    />
   )
 }
 
@@ -522,10 +517,10 @@ const FontSizeSetting = () => {
           ariaLabel={t('settingsFontSize')}
           value={String(fontScale)}
           options={[
-            { value: '0.9', label: t('fontSizeSmall') },
-            { value: '1', label: t('fontSizeStandard') },
-            { value: '1.1', label: t('fontSizeLarge') },
-            { value: '1.25', label: t('fontSizeXLarge') },
+            { value: '0.85', label: t('fontSizeSmall') },
+            { value: '0.95', label: t('fontSizeStandard') },
+            { value: '1.05', label: t('fontSizeLarge') },
+            { value: '1.15', label: t('fontSizeXLarge') },
           ]}
           onChange={(value) => setFontScale(Number(value))}
         />
@@ -688,56 +683,84 @@ const MaxTokensSetting = () => {
 const TOP_UP_URL = 'https://platform.deepseek.com/top_up'
 
 /** GitHub 仓库信息，用于「关于软件」与检查更新 */
-const GITHUB_OWNER = 'xdtbp'
-const GITHUB_REPO = 'DaFeiYu'
-const GITHUB_HOME = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`
 const DEV_AVATAR = `https://github.com/${GITHUB_OWNER}.png`
-
-/** 当前版本号：优先从原生壳读取 versionName，回退到固定值 */
-const getAppVersion = (): string => {
-  const bridge = (window as unknown as { AndroidApp?: { version?: () => string } }).AndroidApp
-  try {
-    const version = bridge?.version?.()
-    if (version) {
-      return version
-    }
-  } catch {
-    /* 回退到默认 */
-  }
-  return '0.5.0'
-}
 
 type UpdateState = 'idle' | 'checking' | 'latest' | 'available' | 'error'
 
-/** 语义化版本比较：a > b 返回正数，a < b 返回负数，相等返回 0 */
-const compareVersion = (a: string, b: string): number => {
-  const left = a.split('.').map((part) => Number.parseInt(part, 10) || 0)
-  const right = b.split('.').map((part) => Number.parseInt(part, 10) || 0)
-  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
-    const diff = (left[index] ?? 0) - (right[index] ?? 0)
-    if (diff !== 0) {
-      return diff
-    }
-  }
-  return 0
-}
+/** WebView 调试：默认关闭，开启前必须确认风险 */
+const WebviewDebugSetting = () => {
+  const t = useTranslate()
+  const supported = webviewDebugSupported()
+  const [enabled, setEnabled] = useState(webviewDebugEnabled)
+  const [confirming, setConfirming] = useState(false)
 
-/** 检查更新：GitHub 最新 Release 的 tag 与当前版本按语义化版本比较 */
-const checkUpdate = async (): Promise<{ latest: boolean; version: string; url: string }> => {
-  const response = await fetch(
-    `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
+  const toggle = () => {
+    if (!supported) {
+      return
+    }
+    if (enabled) {
+      setWebviewDebug(false)
+      setEnabled(false)
+      return
+    }
+    setConfirming(true)
+  }
+
+  return (
+    <>
+      <SettingCell
+        icon={<IconSettingDebug />}
+        label={t('settingsWebviewDebug')}
+        description={
+          !supported
+            ? t('webviewDebugUnsupported')
+            : enabled
+              ? t('webviewDebugOn')
+              : t('webviewDebugOff')
+        }
+        status={null}
+        action={
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label={t('settingsWebviewDebug')}
+            disabled={!supported}
+            className={clsx(styles.switch, enabled && styles.switchOn)}
+            onClick={toggle}
+          >
+            <span className={styles.switchKnob} />
+          </button>
+        }
+      />
+      {confirming ? (
+        <Modal
+          title={t('webviewDebugWarningTitle')}
+          closable
+          onClose={() => setConfirming(false)}
+          footer={
+            <div className={styles.confirmActions}>
+              <Button variant="outlined" size="m" onClick={() => setConfirming(false)}>
+                {t('cancel')}
+              </Button>
+              <Button
+                size="m"
+                onClick={() => {
+                  setWebviewDebug(true)
+                  setEnabled(true)
+                  setConfirming(false)
+                }}
+              >
+                {t('webviewDebugConfirm')}
+              </Button>
+            </div>
+          }
+        >
+          <p className={styles.warningText}>{t('webviewDebugWarningBody')}</p>
+        </Modal>
+      ) : null}
+    </>
   )
-  if (!response.ok) {
-    throw new Error(String(response.status))
-  }
-  const data = (await response.json()) as { tag_name?: string; html_url?: string }
-  const version = (data.tag_name ?? '').replace(/^v/, '')
-  return {
-    // 线上版本不高于当前版本即视为最新（本地比线上新时也成立）
-    latest: compareVersion(version, getAppVersion()) <= 0,
-    version,
-    url: data.html_url ?? GITHUB_HOME,
-  }
 }
 
 /** 关于软件：通用设置最底部，弹窗展示开发者、项目、版本与免责声明，可检查更新 */
@@ -773,7 +796,7 @@ const AboutDialog = ({ onClose }: { onClose: () => void }) => {
       const result = await checkUpdate()
       setLatestVersion(result.version)
       setReleaseUrl(result.url)
-      setUpdate(result.latest ? 'latest' : 'available')
+      setUpdate(result.upToDate ? 'latest' : 'available')
     } catch {
       setUpdate('error')
     }

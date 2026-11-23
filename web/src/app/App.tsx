@@ -28,6 +28,9 @@ import {
 import { DisclaimerGate, isDisclaimerAccepted } from '../components/onboarding/DisclaimerGate.js'
 import { isOnboarded, Onboarding } from '../components/onboarding/Onboarding.js'
 import { SettingsDialog } from '../components/settings/SettingsDialog.js'
+import { UpdateDialog } from '../components/update/UpdateDialog.js'
+import { checkUpdate, skippedVersion, skipVersion, type UpdateInfo } from '../services/update.js'
+import { startBalanceRefresh } from '../services/balanceRefresh.js'
 import { Toast } from '../components/base/Toast.js'
 import { showToast } from '../components/base/toastState.js'
 import { onUploadNotice } from '../services/attachments.js'
@@ -76,6 +79,9 @@ export const App = () => {
   const activeId = useChatStore((state) => state.activeId)
   const siderOpen = useMobileSider((state) => state.open)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  // 启动检查更新：发现更高版本时弹窗，可更新 / 稍后 / 跳过此版本
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+  const updateChecked = useRef(false)
 
   usePreventPageScroll(isMobile)
 
@@ -225,6 +231,32 @@ export const App = () => {
     void initChat()
     setupAccount()
   }, [])
+
+  // 余额：启动刷新一次，之后每分钟刷新一次（页面在后台时跳过）
+  useEffect(() => startBalanceRefresh(), [])
+
+  // 同意免责后检查一次更新；「跳过此版本」只屏蔽当前线上版本
+  useEffect(() => {
+    if (!disclaimerAccepted || updateChecked.current) {
+      return
+    }
+    updateChecked.current = true
+    let cancelled = false
+    void (async () => {
+      try {
+        const info = await checkUpdate()
+        if (cancelled || info.upToDate || skippedVersion() === info.version) {
+          return
+        }
+        setUpdateInfo(info)
+      } catch {
+        // 检查失败保持静默，不打扰启动流程
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [disclaimerAccepted])
 
   // 保证「通道」与可用凭证一致：未登录账号不能走 account，没 Key 不能走 apikey
   useEffect(() => {
@@ -401,6 +433,16 @@ export const App = () => {
         <Onboarding onDone={() => setShowOnboarding(false)} />
       ) : null}
       <SettingsDialog />
+      {updateInfo ? (
+        <UpdateDialog
+          info={updateInfo}
+          onClose={() => setUpdateInfo(null)}
+          onSkip={() => {
+            skipVersion(updateInfo.version)
+            setUpdateInfo(null)
+          }}
+        />
+      ) : null}
       {previewImage ? (
         <div
           className={styles.imagePreview}

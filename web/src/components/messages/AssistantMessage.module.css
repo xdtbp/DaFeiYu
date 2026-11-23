@@ -51,8 +51,8 @@
   align-items: flex-start;
   gap: 6px;
   margin-top: 8px;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--dsw-alias-state-error-primary);
 
   > svg {

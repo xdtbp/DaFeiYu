@@ -35,28 +35,40 @@
   border: none;
   border-radius: 12px;
   background-color: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-secondary);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 20px;
   text-align: left;
   cursor: pointer;
   user-select: none;
   outline: none;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
 
   svg {
     flex-shrink: 0;
   }
 
-  &:hover,
-  &.navItemActive {
-    background-color: var(--dsw-alias-interactive-bg-hover);
-  }
-
   &:focus-visible {
     box-shadow: 0 0 0 2px var(--dsw-alias-button-primary-fill);
   }
+}
+
+/* 触屏没有 hover：只在支持悬停的设备上给悬停底色，避免点击后残留灰色 */
+@media (hover: hover) {
+  .navItem:hover {
+    background-color: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+/* 选中态比 hover 更重：无论点选还是左右滑动切换，都只有当前分组高亮 */
+.navItem.navItemActive {
+  background-color: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
 }
 
 .content {
@@ -76,8 +88,8 @@
   min-height: 60px;
   padding: 12px 0;
   color: var(--dsw-alias-label-primary);
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 20px;
 
   & + & {
     box-shadow: inset 0 1px 0 0 var(--dsw-alias-border-l2-darkmode-thin);
@@ -112,124 +124,109 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* 深色设置的标题行：图标 + 文字 */
-.themeTitle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  line-height: 22px;
-}
-
 .label {
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .uploadButton {
   padding: 0 13px;
 }
 
+/* 位置：图标 + 标题一行，两个下拉单独一行，避免宽度不足时图标被挤到文字上方 */
 .locationCell {
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 
-.locationCell .text {
-  flex: 1 0 auto;
-  padding-right: 8px;
+.locationHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .locationSelectors {
   display: flex;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  max-width: 100%;
 }
 
 .locationSelectors > button {
-  flex-shrink: 1;
+  flex: 1 1 0;
   min-width: 0;
   text-align: start;
 }
 
-.provinceSelect {
-  width: 159px;
-}
-
 .locationSelectors > .citySelect {
-  min-width: 120px;
-  width: 120px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .regionSelect {
-  max-width: min(285px, 100%);
+  flex: 1 1 100%;
+  max-width: none;
 }
 
-.theme {
-  flex-shrink: 0;
-  margin-top: 10px;
-}
-
-.themeOptions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 8px 0 10px;
-}
-
-.themeOption {
+/* 深色设置：分段选项卡（单个胶囊容器，选中段为白色 / 深灰） */
+.segmented {
   display: inline-flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  box-sizing: border-box;
-  min-width: 104px;
-  height: 82px;
-  padding: 16px 12px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  background-color: transparent;
-  color: var(--dsw-alias-label-primary);
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background-color: var(--dsw-specific-selector);
+}
+
+.segment {
+  min-width: 52px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
-  text-align: center;
+  font-size: 12px;
+  line-height: 17px;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
   outline: none;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
 
-  &:hover,
-  &.themeOptionSelected {
-    background-color: var(--dsw-specific-selector);
-  }
+.segmentActive {
+  background-color: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
 
-  &:focus-visible {
-    box-shadow: 0 0 0 2px var(--dsw-alias-button-primary-fill);
-  }
+.segment:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-button-primary-fill);
 }
 
 .description {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 17px;
   color: var(--dsw-alias-label-tertiary);
 }
 
 .balanceTotal {
-  font-size: 22px;
-  line-height: 28px;
+  font-size: 20px;
+  line-height: 26px;
   font-weight: 600;
   color: var(--dsw-alias-brand-text);
 }
 
 .error {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 17px;
   color: var(--dsw-alias-state-error-primary);
 }
 
@@ -246,8 +243,8 @@
   align-items: center;
   box-sizing: border-box;
   height: var(--ds-control-height-xl);
-  font-size: 14px;
-  line-height: 24px;
+  font-size: 13px;
+  line-height: 22px;
 }
 
 .apiKeySaved {
@@ -320,23 +317,23 @@
 @media not all and (min-width: 768px) {
   /* 移动端整体放大字号与行高，贴近手指阅读 */
   .cell {
-    min-height: 64px;
-    font-size: 16px;
+    min-height: 62px;
+    font-size: 15px;
   }
 
   .label {
-    font-size: 16px;
-    line-height: 24px;
+    font-size: 15px;
+    line-height: 23px;
   }
 
   .description {
-    font-size: 13px;
-    line-height: 19px;
+    font-size: 12px;
+    line-height: 18px;
   }
 
   .navItem {
-    min-height: 44px;
-    font-size: 15px;
+    min-height: 42px;
+    font-size: 14px;
   }
 
   .dialog.dialog {
@@ -396,19 +393,8 @@
     gap: 12px;
   }
 
-  .locationCell .text {
-    flex-basis: 100%;
-    padding-right: 0;
-  }
-
   .locationSelectors {
-    width: 100%;
     gap: 12px;
-  }
-
-  .provinceSelect,
-  .citySelect {
-    flex: 1 1 auto;
   }
 
   .apiKey {
@@ -422,7 +408,7 @@
     border: none;
     border-radius: 40px;
     background-color: var(--dsw-specific-login-input);
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .apiKeySaved svg {
@@ -446,8 +432,8 @@
   background-color: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-static-neutral-bluish-00);
   font: inherit;
-  font-size: 17px;
-  line-height: 24px;
+  font-size: 16px;
+  line-height: 23px;
   font-weight: 500;
   cursor: pointer;
 
@@ -537,7 +523,7 @@
 .progressText {
   flex-shrink: 0;
   min-width: 56px;
-  font-size: 12px;
+  font-size: 11px;
   text-align: right;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -599,29 +585,29 @@
 }
 
 .aboutName {
-  font-size: 15px;
-  line-height: 22px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
 
 .aboutProject {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 19px;
   color: var(--dsw-alias-brand-text);
   text-decoration: none;
 }
 
 .aboutVersion {
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--dsw-alias-label-secondary);
 }
 
 .aboutDisclaimer {
   margin: 8px 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 17px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -630,8 +616,8 @@
 }
 
 .aboutUpdate {
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--dsw-alias-brand-text);
   text-decoration: none;
 }
@@ -643,12 +629,66 @@
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
   color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   text-decoration: none;
   white-space: nowrap;
 }
 
 .topUpLink:active {
   background-color: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* 开关：WebView 调试等需要显式确认的选项 */
+.switch {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  box-sizing: border-box;
+  width: 42px;
+  height: 25px;
+  padding: 2px;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--dsw-alias-interactive-bg-active);
+  cursor: pointer;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.switchOn {
+  background-color: var(--dsw-alias-button-primary-fill);
+}
+
+.switchKnob {
+  display: block;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background-color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+  transition: transform var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.switchOn .switchKnob {
+  transform: translateX(17px);
+}
+
+/* 确认弹窗：说明文字 + 底部按钮 */
+.warningText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 21px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
 }

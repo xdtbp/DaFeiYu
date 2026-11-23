@@ -17,7 +17,7 @@ type ApiBalanceState = {
   loaded: boolean
   /** 上次查询是否失败（超时 / 401 / 网络错误） */
   error: boolean
-  refresh: () => Promise<void>
+  refresh: (quiet?: boolean) => Promise<void>
 }
 
 const format = (value: string | undefined): string => {
@@ -37,13 +37,15 @@ export const useApiBalance = create<ApiBalanceState>((set) => ({
   loading: false,
   loaded: false,
   error: false,
-  refresh: async () => {
+  refresh: async (quiet = false) => {
     const apiKey = useSettings.getState().apiKey
     if (!apiKey) {
       set({ total: '', toppedUp: '', granted: '', loading: false, loaded: true, error: false })
       return
     }
-    set({ loading: true, error: false })
+    // 轮询刷新时保留已有数字，避免界面反复闪「获取中」
+    const keep = quiet && useApiBalance.getState().loaded && !useApiBalance.getState().error
+    set(keep ? { error: false } : { loading: true, error: false })
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), TIMEOUT)
     try {

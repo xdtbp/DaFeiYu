@@ -1,12 +1,12 @@
 .wrapper {
-  --line-height: 24px;
+  --line-height: 23px;
   --input-padding-top: 12px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   width: 100%;
   cursor: text;
-  font-size: 16px;
+  font-size: 15px;
   line-height: var(--line-height);
   border-radius: 24px;
   border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
@@ -419,9 +419,9 @@
 /* 移动端：加大开关与发送按钮的触摸区 */
 @media not all and (min-width: 768px) {
   .toggle {
-    height: 38px;
+    height: 37px;
     padding: 0 14px;
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .sendButton {
@@ -438,17 +438,17 @@
 /* 移动端输入框整体再放大一档 */
 @media not all and (min-width: 768px) {
   .wrapper {
-    font-size: 17px;
-    --line-height: 26px;
+    font-size: 16px;
+    --line-height: 25px;
   }
 
   .toggle {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .mirror {
-    font-size: 17px;
-    line-height: 26px;
+    font-size: 16px;
+    line-height: 25px;
   }
 }
 
@@ -552,7 +552,7 @@
   background: var(--dsw-alias-button-primary-fill, #4d6bfe);
   color: #fff;
   font: inherit;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 8px 22px rgba(77, 107, 254, 0.4);

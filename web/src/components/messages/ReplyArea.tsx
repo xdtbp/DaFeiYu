@@ -69,26 +69,27 @@ export const ReplyArea = memo(function ReplyArea({
   // 思考过程展示：折叠 / 完整展开 / 仅展示最新部分
   const thinkingDisplay = useSettings((state) => state.thinkingDisplay)
   const latestOnly = thinkingDisplay === 'latest'
-  const [open, setOpen] = useState(thinkingDisplay !== 'collapsed')
+  // 展开状态：只有「完整展示」默认展开；「折叠」与「仅展示最新」默认收起（后者显示 6 行预览）
+  const [expanded, setExpanded] = useState(thinkingDisplay === 'full')
   const stepsRef = useRef<HTMLDivElement>(null)
   const titleActive = streaming && !hasResponse
   useTicker(titleActive, 1000)
 
-  // 切换展示方式时同步展开状态：折叠 → 收起，其余 → 展开
+  // 切换展示方式时同步展开状态
   useEffect(() => {
-    setOpen(thinkingDisplay !== 'collapsed')
+    setExpanded(thinkingDisplay === 'full')
   }, [thinkingDisplay])
 
-  // 「仅展示最新」时保持滚动在底部，正在生成的内容始终可见
+  // 「仅展示最新」的 6 行预览保持贴底，正在生成的内容始终可见
   useEffect(() => {
-    if (!latestOnly || !open) {
+    if (!latestOnly || expanded) {
       return
     }
     const element = stepsRef.current
     if (element) {
       element.scrollTop = element.scrollHeight
     }
-  }, [view.steps, latestOnly, open])
+  }, [view.steps, latestOnly, expanded])
   if (view.steps.length === 0 && !(message.thinking && streaming)) {
     return null
   }
@@ -96,19 +97,21 @@ export const ReplyArea = memo(function ReplyArea({
   const thinking = message.thinking ?? view.steps.some((step) => step.type === 'thinking')
   const title = thinking ? getAreaTitle(view, streaming, Date.now(), hasResponse) : null
   const stopped = !streaming && !hasResponse
+  // 「仅展示最新」收起时展示 6 行预览；点标题展开完整内容
+  const preview = latestOnly && !expanded && title !== null
   return (
     <div className={styles.area}>
       {title ? (
-        <div className={styles.title} onClick={() => setOpen((value) => !value)}>
+        <div className={styles.title} onClick={() => setExpanded((value) => !value)}>
           <span className={clsx(styles.titleIcon, stopped && styles.stoppedIcon)}>
             <IconThinkOutline16 />
           </span>
           <span className={clsx(styles.titleText, titleActive && styles.shimmer)}>{title}</span>
-          {open ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
+          {expanded ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
         </div>
       ) : null}
-      {open || !title ? (
-        <div ref={stepsRef} className={clsx(styles.steps, latestOnly && styles.stepsLatest)}>
+      {expanded || preview || !title ? (
+        <div ref={stepsRef} className={clsx(styles.steps, preview && styles.stepsLatest)}>
           {view.steps.map((step, index) => (
             <StepItem
               key={stepKey(step, index)}

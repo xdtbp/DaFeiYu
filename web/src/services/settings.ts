@@ -148,14 +148,13 @@ const initialMaxTokens = (): number | null => {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
-/** 字号缩放，默认 1（标准） */
+/** 字号缩放档位：小 / 标准 / 大 / 特大（整体比旧版更小一档） */
+export const FONT_SCALES = [0.85, 0.95, 1.05, 1.15] as const
+
+/** 默认 0.95（标准）；旧版保存的 1 / 1.1 / 1.25 不在档位内时回落到标准 */
 const initialFontScale = (): number => {
-  const saved = read(KEYS.fontScale)
-  if (!saved) {
-    return 1
-  }
-  const value = Number(saved)
-  return Number.isFinite(value) && value >= 0.8 && value <= 1.5 ? value : 1
+  const value = Number(read(KEYS.fontScale))
+  return (FONT_SCALES as readonly number[]).includes(value) ? value : 0.95
 }
 
 export const useSettings = create<Settings>(() => ({

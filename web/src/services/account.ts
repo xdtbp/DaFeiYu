@@ -153,12 +153,15 @@ export const signInAccount = () => {
 
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 
-export const refreshAccount = () => {
+export const refreshAccount = (quiet = false) => {
   const native = bridge()
   if (!native) {
     return
   }
-  useAccount.setState({ refreshing: true })
+  // 轮询时不显示「刷新中」，避免设置页每次轮询都闪一下
+  if (!quiet) {
+    useAccount.setState({ refreshing: true })
+  }
   native.refresh()
   // 原生迟迟不回调时结束「刷新中」，避免界面一直停在加载态
   clearTimeout(refreshTimer)

@@ -106,3 +106,10 @@ export const IconSettingWallet = () => (
     <circle cx="6" cy="9.4" r="0.7" fill="currentColor" />
   </svg>
 )
+
+/** WebView 调试：代码括号 */
+export const IconSettingDebug = () => (
+  <svg {...base}>
+    <path d="M5.6 4.4 2.2 8l3.4 3.6M10.4 4.4 13.8 8l-3.4 3.6" {...stroke} />
+  </svg>
+)

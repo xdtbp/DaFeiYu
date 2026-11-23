@@ -43,7 +43,7 @@ export const BalanceCard = () => {
             type="button"
             className={styles.confirm}
             disabled={!signedIn || refreshing}
-            onClick={refreshAccount}
+            onClick={() => refreshAccount()}
           >
             {refreshing ? t('balanceLoading') : t('balanceRefresh')}
           </button>

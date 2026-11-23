@@ -318,7 +318,7 @@
 /* 「仅展示最新内容」：思考区限高约 6 行，全部内容在框内滚动，并保持贴底显示最新 */
 .stepsLatest {
   /* 思考内容为 14px/24px，6 行 = 144px */
-  max-height: 144px;
+  max-height: 132px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;

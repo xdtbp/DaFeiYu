@@ -26,7 +26,7 @@
   min-width: 0;
   padding-left: 4px;
   overflow: hidden;
-  font-size: 20px;
+  font-size: 19px;
   line-height: 22px;
   font-weight: 600;
   white-space: nowrap;
@@ -49,7 +49,7 @@
   background: var(--dsw-alias-button-elevated-fill);
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   user-select: none;
@@ -115,7 +115,7 @@
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
 
   &::placeholder {
     color: var(--dsw-alias-label-caption);
@@ -171,8 +171,8 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 19px;
   color: var(--dsw-alias-label-primary);
 }
 
@@ -293,7 +293,7 @@
   min-width: 0;
   margin-left: 4px;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13px;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--dsw-alias-label-primary);
@@ -383,7 +383,7 @@
 
   .settingsLabel {
     margin-left: 10px;
-    font-size: 16px;
+    font-size: 15px;
     line-height: 22px;
   }
 }
@@ -463,7 +463,7 @@
 
 .accountName {
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-primary);
   white-space: nowrap;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../../app/viewport.js'
 import { useTranslate } from '../../i18n/index.js'
 import {
@@ -54,17 +54,17 @@ export const MessageList = ({
   const scrollTopRef = useRef(0)
   const restoreScrollRef = useRef<{ messageId: string; top: number } | null>(null)
   const messages = getVisibleMessages(session)
-  const [previousVersions, setPreviousVersions] = useState(() =>
-    buildMessageVersions(session, new Map())
-  )
   const [showScrollButton, setShowScrollButton] = useState(false)
-  const versions = useMemo(
-    () => buildMessageVersions(session, previousVersions),
-    [session, previousVersions]
-  )
-  if (versions !== previousVersions) {
-    setPreviousVersions(versions)
+  // 版本表只在「消息结构」变化时重建：流式正文更新只是内容变化，
+  // 用 ref 缓存结果，避免每个 token 都多渲染一轮（长回答时尤其明显）。
+  const versionsRef = useRef<ReadonlyMap<string, MessageVersions>>(new Map())
+  const versionKeyRef = useRef('')
+  const versionKey = messages.map((message) => message.id).join('|')
+  if (versionKeyRef.current !== versionKey) {
+    versionsRef.current = buildMessageVersions(session, versionsRef.current)
+    versionKeyRef.current = versionKey
   }
+  const versions = versionsRef.current
   const lastMessageId = messages.at(-1)?.id
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
@@ -146,17 +146,25 @@ export const MessageList = ({
     }
     const onScroll = () => {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICKY_THRESHOLD
-      // 仅在用户向上滚动时停止跟随底部，布局或内容增高时保持跟随状态。
-      if (nearBottom) {
-        stickyRef.current = true
-      } else if (el.scrollTop < scrollTopRef.current) {
-        stickyRef.current = false
-      }
+      // 只以「是否接近底部」为准：用户上滑后立刻停止跟随。
+      // 不再用方向判断，避免流式内容持续增高时反复把视图拽回底部（表现为抽搐）。
+      stickyRef.current = nearBottom
       setShowScrollButton(!nearBottom)
       scrollTopRef.current = el.scrollTop
     }
+    // 手指按下的瞬间如果不在底部，就先松开跟随，避免手势与自动贴底互相拉扯
+    const onTouchStart = () => {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICKY_THRESHOLD
+      if (!nearBottom) {
+        stickyRef.current = false
+      }
+    }
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('touchstart', onTouchStart)
+    }
   }, [isMobile, scrollToBottom])
 
   const lastIndex = messages.length - 1
