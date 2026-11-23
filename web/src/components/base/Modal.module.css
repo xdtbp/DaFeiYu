@@ -76,16 +76,6 @@
   animation: modalContentIn 0.26s cubic-bezier(0.22, 0.9, 0.3, 1.02) both;
 }
 
-@keyframes modalOverlayIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
 @keyframes modalContentIn {
   from {
     opacity: 0;
@@ -102,5 +92,37 @@
   .overlay,
   .content {
     animation: none;
+  }
+}
+
+@keyframes modalOverlayIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* 退场：遮罩淡出 + 卡片轻微下沉，避免瞬间消失 */
+.overlay[data-closing] {
+  animation: modalOverlayOut 0.18s var(--ds-ease-in-out) both;
+}
+
+.content[data-closing] {
+  animation: modalContentOut 0.2s var(--ds-ease-in-out) both;
+}
+
+@keyframes modalOverlayOut {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modalContentOut {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
   }
 }

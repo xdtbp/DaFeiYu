@@ -1,6 +1,6 @@
 import { useTranslate } from '../../i18n/index.js'
 import clsx from 'clsx'
-import { memo } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { IconRefreshOutline16, IconWarningOutline16 } from '../base/icons.js'
 import { describeReply } from '../../services/chat/describe.js'
 import { canContinueReply } from '../../services/chat/reply.js'
@@ -164,8 +164,9 @@ export const AssistantMessage = memo(function AssistantMessage({
               {t('usageTokensCost', {
                 input: formatTokens(totalInputTokens(message.usage)),
                 output: formatTokens(message.usage.output_tokens),
-                cost: formatCost(estimateCost(message.usage, message.model)),
+                cost: formatCost(estimateCost(message.usage, message.model, message.createdAt)),
               })}
+              <CostHint />
             </span>
           ) : null}
           {isLast && canContinueReply(message) ? (
@@ -187,3 +188,45 @@ export const AssistantMessage = memo(function AssistantMessage({
     </div>
   )
 })
+
+/** 花费说明：点击问号在气泡里提示「仅供参考」 */
+const CostHint = () => {
+  const t = useTranslate()
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [open])
+
+  return (
+    <span ref={wrapRef} className={styles.costHelpWrap}>
+      <button
+        type="button"
+        className={styles.costHelp}
+        aria-label={t('costEstimateLabel')}
+        aria-expanded={open}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen((value) => !value)
+        }}
+      >
+        ?
+      </button>
+      {open ? (
+        <span className={styles.costTip} role="tooltip">
+          {t('costEstimateHint')}
+        </span>
+      ) : null}
+    </span>
+  )
+}

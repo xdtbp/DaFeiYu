@@ -30,6 +30,37 @@
   }
 }
 
+/* 多选：左侧勾选框，行内不再显示「更多」 */
+.selectable {
+  padding-left: 6px;
+}
+
+.selected {
+  background-color: var(--dsw-specific-sidebar-nav-item-hover);
+}
+
+.check {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  border: 1.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  color: #fff;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    border-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.checkOn {
+  border-color: var(--dsw-alias-button-primary-fill);
+  background-color: var(--dsw-alias-button-primary-fill);
+}
+
 .title {
   flex: 1;
   min-width: 0;

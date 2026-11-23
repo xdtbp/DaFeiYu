@@ -80,6 +80,7 @@
   margin-right: -24px;
   padding: 0 24px;
   overflow-y: auto;
+  touch-action: pan-y;
 }
 
 .cell {
@@ -343,6 +344,12 @@
     height: calc(100% - 64px);
     max-height: 800px;
     border-radius: 24px 24px 0 0;
+    /* 从屏幕底部整体滑上来，而不是原地淡入 */
+    animation: settingsSheetIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .dialog.dialog[data-closing] {
+    animation: settingsSheetOut 0.2s cubic-bezier(0.4, 0, 1, 1) both;
   }
 
   .dialogMain {
@@ -479,13 +486,22 @@
 
 @keyframes settingsSheetIn {
   from {
-    opacity: 0;
-    transform: translateY(28px);
+    transform: translateY(100%);
   }
 
   to {
-    opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* 设置面板收起：整块滑回屏幕底部 */
+@keyframes settingsSheetOut {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(100%);
   }
 }
 

@@ -5,6 +5,8 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  /* 只把纵向手势交给浏览器，横向留给侧边栏跟手 */
+  touch-action: pan-y;
   /* 滚动完全由 JS 控制，关掉浏览器自动锚定，避免流式输出时与贴底逻辑互相拉扯 */
   overflow-anchor: none;
   scrollbar-gutter: stable both-edges;
@@ -29,6 +31,7 @@
     overflow-y: auto;
     overscroll-behavior-y: contain;
     overflow-anchor: none;
+    touch-action: pan-y;
     scrollbar-color: var(--scroll-color) transparent;
   }
 }

@@ -40,6 +40,11 @@ import { CollapsedSider } from '../components/sider/CollapsedSider.js'
 import {
   closeMobileSider,
   openMobileSider,
+  setSiderDrag,
+  settleSider,
+  siderOffset,
+  SIDER_WIDTH,
+  SETTLE_RATIO,
   useMobileSider,
 } from '../components/sider/mobileSiderState.js'
 import { MobileSider, Sider } from '../components/sider/Sider.js'
@@ -78,6 +83,8 @@ export const App = () => {
   )
   const activeId = useChatStore((state) => state.activeId)
   const siderOpen = useMobileSider((state) => state.open)
+  const siderDrag = useMobileSider((state) => state.drag)
+  const siderDragging = useMobileSider((state) => state.dragging)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   // 启动检查更新：发现更高版本时弹窗，可更新 / 稍后 / 跳过此版本
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
@@ -138,8 +145,13 @@ export const App = () => {
         if (overflowX > 4 && /auto|scroll/.test(style.overflowX)) {
           return true
         }
-        // 内容比视口宽（超长公式、宽表格、横向代码）：留给内容
-        if (overflowX > 4 && element.clientWidth >= window.innerWidth * 0.6) {
+        // 内容比视口宽（超长公式、宽表格、横向代码）：留给内容。
+        // overflowX 为 hidden 的容器是布局裁剪（侧边栏推出主界面也会撑出滚动宽度），不算横向内容。
+        if (
+          overflowX > 4 &&
+          style.overflowX !== 'hidden' &&
+          element.clientWidth >= window.innerWidth * 0.6
+        ) {
           return true
         }
       }
@@ -151,7 +163,11 @@ export const App = () => {
       return selection !== null && selection.toString().trim().length > 0
     }
 
+    let baseOpen = false
+    let dragging = false
+
     const onStart = (event: TouchEvent) => {
+      dragging = false
       if (event.touches.length !== 1) {
         blocked = true
         return
@@ -159,28 +175,63 @@ export const App = () => {
       const touch = event.touches[0]
       startX = touch.clientX
       startY = touch.clientY
-      blocked = hasTextSelection() || ownsHorizontalGesture(event.target)
+      baseOpen = useMobileSider.getState().open
+      // 有弹层 / 预览 / 设置时不抢手势
+      blocked =
+        hasTextSelection() ||
+        ownsHorizontalGesture(event.target) ||
+        document.querySelector('[role="dialog"], [data-ds-no-swipe]') !== null
+    }
+
+    // 跟手：向右滑多少，抽屉就拉出多少（0 ~ 270）
+    const onMove = (event: TouchEvent) => {
+      if (blocked || event.touches.length !== 1) {
+        return
+      }
+      const touch = event.touches[0]
+      const dx = touch.clientX - startX
+      const dy = touch.clientY - startY
+      if (!dragging) {
+        if (Math.abs(dx) < 8) {
+          return
+        }
+        // 纵向为主的手势交还给页面滚动
+        if (Math.abs(dx) < Math.abs(dy) * 1.2) {
+          blocked = true
+          return
+        }
+        if (baseOpen ? dx >= 0 : dx <= 0) {
+          return
+        }
+        dragging = true
+      }
+      // 判定为横滑后阻止浏览器接管，保证位移跟手
+      if (event.cancelable) {
+        event.preventDefault()
+      }
+      const offset = baseOpen ? SIDER_WIDTH + dx : dx
+      setSiderDrag(Math.min(SIDER_WIDTH, Math.max(0, offset)))
     }
 
     const onEnd = (event: TouchEvent) => {
-      const owned = blocked
-      blocked = false
-      if (owned) {
+      const wasDragging = dragging
+      dragging = false
+      if (blocked && !wasDragging) {
+        blocked = false
         return
       }
       const touch = event.changedTouches[0]
       const dx = touch.clientX - startX
       const dy = touch.clientY - startY
-      // 必须明显是水平手势，且滑动距离足够
+      blocked = false
+      if (wasDragging) {
+        // 达到 40% 即展开，否则回弹收起
+        const offset = useMobileSider.getState().drag ?? 0
+        settleSider(offset >= SIDER_WIDTH * SETTLE_RATIO)
+        return
+      }
+      // 快速轻扫（没进入跟手阶段）也允许开合
       if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) {
-        return
-      }
-      // 有弹层 / 预览 / 设置时不要把滑动当成开合侧边栏
-      if (document.querySelector('[role="dialog"], [data-ds-no-swipe]')) {
-        return
-      }
-      // 有弹层 / 预览 / 设置时不要把滑动当成开合侧边栏
-      if (document.querySelector('[role="dialog"], [data-ds-no-swipe]')) {
         return
       }
       const open = useMobileSider.getState().open
@@ -192,6 +243,8 @@ export const App = () => {
     }
 
     window.addEventListener('touchstart', onStart, { passive: true })
+    // 必须是非 passive 才能在判定横滑后 preventDefault
+    window.addEventListener('touchmove', onMove, { passive: false })
     window.addEventListener('touchend', onEnd, { passive: true })
     const onCancel = () => {
       blocked = false
@@ -199,6 +252,7 @@ export const App = () => {
     window.addEventListener('touchcancel', onCancel)
     return () => {
       window.removeEventListener('touchstart', onStart)
+      window.removeEventListener('touchmove', onMove)
       window.removeEventListener('touchend', onEnd)
       window.removeEventListener('touchcancel', onCancel)
     }
@@ -371,7 +425,14 @@ export const App = () => {
         {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
         <main
           className={styles.main}
-          style={isMobile && siderOpen ? { transform: 'translateX(270px)' } : undefined}
+          style={
+            isMobile && (siderOpen || siderDrag !== null)
+              ? {
+                  transform: `translateX(${siderOffset(siderOpen, siderDrag)}px)`,
+                  transition: siderDragging ? 'none' : undefined,
+                }
+              : undefined
+          }
         >
           {saveError ? (
             <div className={styles.saveError} role="alert">

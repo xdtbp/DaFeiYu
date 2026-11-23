@@ -3,6 +3,8 @@
   inset: 0;
   display: flex;
   overflow: hidden;
+  /* 横向手势留给侧边栏跟手，纵向仍然正常滚动 */
+  touch-action: pan-y;
   background-color: var(--dsw-alias-bg-base);
 }
 
@@ -12,7 +14,9 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  transition: transform 0.26s var(--ds-ease-in-out);
+  touch-action: pan-y;
+  /* 与抽屉的位移时长/曲线完全一致，开合过程中两者边缘不会错开 */
+  transition: transform 0.24s var(--ds-ease-in-out);
 }
 
 .content {

@@ -16,6 +16,11 @@ export const zh = {
   cancel: '取消',
   delete: '删除',
   sessionItemMenuRenameOption: '重命名',
+  sessionMenuMultiSelect: '多选',
+  sessionMenuPin: '置顶',
+  sessionMenuUnpin: '取消置顶',
+  sessionPinnedGroup: '置顶',
+  sessionSelectedCount: '已选 {count} 项',
   more: '更多',
   close: '关闭',
   sessionHistoryTimelineLabelToday: '今天',
@@ -312,4 +317,6 @@ export const zh = {
   webviewDebugWarningTitle: '开启 WebView 调试？',
   webviewDebugWarningBody: '这个可能存在未知风险，你知道你在做什么的话就打开，否则请不要开启。',
   webviewDebugConfirm: '仍然开启',
+  costEstimateLabel: '花费说明',
+  costEstimateHint: '仅供参考，以实际为准',
 } as const

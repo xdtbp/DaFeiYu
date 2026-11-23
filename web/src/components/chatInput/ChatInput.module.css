@@ -1,4 +1,6 @@
 .wrapper {
+  /* 输入框与 + 号面板的三个卡片共用同一个圆角 */
+  --ds-composer-radius: 24px;
   --line-height: 23px;
   --input-padding-top: 12px;
   display: flex;
@@ -8,7 +10,7 @@
   cursor: text;
   font-size: 15px;
   line-height: var(--line-height);
-  border-radius: 24px;
+  border-radius: var(--ds-composer-radius, 24px);
   border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
   background: var(--dsw-specific-input-major);
   overflow: hidden;
@@ -333,9 +335,12 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 2px 2px;
-  transform-origin: bottom center;
-  animation: attachPanelIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform, opacity;
+  overflow: hidden;
+  max-height: 260px;
+  /* 先撑高容器（输入框顺势上移），内容再淡入上浮。
+     不加 fill-mode，动画结束后回到基础样式，收起过渡才能接管 */
+  animation: attachPanelExpand 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: max-height, height, opacity;
 }
 
 .recentRow {
@@ -379,7 +384,8 @@
   gap: 8px;
   padding: 24px 6px;
   border: none;
-  border-radius: 14px;
+  /* 与输入框保持同一个圆角 */
+  border-radius: var(--ds-composer-radius, 24px);
   background: var(--dsw-specific-selector);
   font: inherit;
   cursor: pointer;
@@ -404,16 +410,45 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-@keyframes attachPanelIn {
+@keyframes attachPanelExpand {
+  from {
+    max-height: 0;
+    padding-top: 0;
+    opacity: 0;
+  }
+
+  to {
+    max-height: 260px;
+    padding-top: 10px;
+    opacity: 1;
+  }
+}
+
+/* 内容在容器撑开之后再出现 */
+.recentRow,
+.attachRow {
+  animation: attachContentIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) 0.06s both;
+}
+
+@keyframes attachContentIn {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.98);
+    transform: translateY(8px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
+}
+
+/* 加号打开时旋转成叉号 */
+.plusButton svg {
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.plusButtonOpen svg {
+  transform: rotate(45deg);
 }
 
 /* 移动端：加大开关与发送按钮的触摸区 */

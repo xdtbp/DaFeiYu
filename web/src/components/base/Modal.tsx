@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslate } from '../../i18n/index.js'
 import { IconCloseOutline16 } from './icons.js'
@@ -33,12 +33,31 @@ export const Modal = ({
   const titleId = useId()
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  // 关闭时先播退场动画，动画结束再真正卸载
+  const [closing, setClosing] = useState(false)
+  const closeTimer = useRef<number | undefined>(undefined)
+  const requestCloseRef = useRef(() => {})
+  requestCloseRef.current = () => {
+    if (closing) {
+      return
+    }
+    setClosing(true)
+    closeTimer.current = window.setTimeout(() => onCloseRef.current(), 200)
+  }
+  useEffect(
+    () => () => {
+      if (closeTimer.current !== undefined) {
+        window.clearTimeout(closeTimer.current)
+      }
+    },
+    []
+  )
   useEffect(() => {
     const token = {}
     openModals.push(token)
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && openModals.at(-1) === token) {
-        onCloseRef.current()
+        requestCloseRef.current()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -51,13 +70,15 @@ export const Modal = ({
   return createPortal(
     <div
       className={styles.overlay}
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      data-closing={closing ? '' : undefined}
+      onMouseDown={(event) => event.target === event.currentTarget && requestCloseRef.current()}
     >
       <div
         className={clsx(styles.content, className)}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        data-closing={closing ? '' : undefined}
       >
         <div className={styles.header}>
           <div id={titleId} className={styles.title}>
@@ -69,7 +90,7 @@ export const Modal = ({
               tone="primary"
               icon={<IconCloseOutline16 />}
               aria-label={t('close')}
-              onClick={onClose}
+              onClick={() => requestCloseRef.current()}
             />
           ) : null}
         </div>

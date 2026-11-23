@@ -68,6 +68,46 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
   const [showPanel, setShowPanel] = useState(false)
+  // 关闭时先播收起动画再卸载
+  const [panelClosing, setPanelClosing] = useState(false)
+  const panelTimer = useRef<number | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelVisibleRef = useRef(false)
+  panelVisibleRef.current = showPanel
+  const closePanel = useCallback(() => {
+    if (!panelVisibleRef.current) {
+      return
+    }
+    // 用实测高度做过渡：max-height 直接归零会有一大半时间停在内容高度之上
+    const element = panelRef.current
+    if (element) {
+      element.style.height = `${element.getBoundingClientRect().height}px`
+      element.style.maxHeight = 'none'
+      // 强制回流，保证过渡从当前高度开始，而不是直接跳到 0
+      void element.offsetHeight
+      element.style.transition = 'height 150ms cubic-bezier(0.32, 0.72, 0, 1), opacity 110ms ease-out'
+      element.style.height = '0px'
+      element.style.opacity = '0'
+      element.style.paddingTop = '0px'
+    }
+    setPanelClosing(true)
+    if (panelTimer.current !== null) {
+      window.clearTimeout(panelTimer.current)
+    }
+    panelTimer.current = window.setTimeout(() => {
+      setShowPanel(false)
+      setPanelClosing(false)
+    }, 160)
+  }, [])
+  useEffect(
+    () => () => {
+      if (panelTimer.current !== null) {
+        window.clearTimeout(panelTimer.current)
+      }
+    },
+    []
+  )
+
   const [editingFile, setEditingFile] = useState<File | null>(null)
   /** 正在被替换的草稿附件（从预览里点「编辑」时记下 id） */
   const [editingAttachmentId, setEditingAttachmentId] = useState<string | null>(null)
@@ -86,8 +126,8 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     if (!showPanel) {
       return
     }
-    return pushBackHandler(() => setShowPanel(false))
-  }, [showPanel])
+    return pushBackHandler(closePanel)
+  }, [showPanel, closePanel])
   const [recentPhotos, setRecentPhotos] = useState<Array<{ id: string; thumb: string }>>([])
 
   type NativeBridge = {
@@ -298,12 +338,15 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
           value={text}
           onChange={(event) => setText(event.target.value)}
           onMouseDown={(event) => {
+            // 输入框获得焦点时收起快捷面板，避免键盘把面板顶得过高
+            closePanel()
             // 首次点击时手动聚焦，避免 Safari 把整个页面滚到输入框位置。
             if (isMobile && event.button === 0 && document.activeElement !== event.currentTarget) {
               event.preventDefault()
               event.currentTarget.focus({ preventScroll: true })
             }
           }}
+          onFocus={closePanel}
           onPaste={(event) => {
             const files = Array.from(event.clipboardData.files)
             if (files.length > 0) {
@@ -366,10 +409,35 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
           <IconButton
             size="m"
             tone="primary"
+            className={clsx(
+              styles.plusButton,
+              showPanel && !panelClosing && styles.plusButtonOpen
+            )}
             icon={<IconPlusOutline20 />}
             tooltip={t('uploadFile')}
             disabled={importingHistory}
-            onClick={() => setShowPanel((value) => !value)}
+            onClick={() => {
+              if (showPanel) {
+                closePanel()
+                return
+              }
+              // 打开快捷面板先收起键盘，避免键盘和面板同时占位
+              textareaRef.current?.blur()
+              if (panelTimer.current !== null) {
+                window.clearTimeout(panelTimer.current)
+                panelTimer.current = null
+              }
+              const element = panelRef.current
+              if (element) {
+                element.style.height = ''
+                element.style.maxHeight = ''
+                element.style.transition = ''
+                element.style.opacity = ''
+                element.style.paddingTop = ''
+              }
+              setPanelClosing(false)
+              setShowPanel(true)
+            }}
           />
           <input
             ref={fileInputRef}
@@ -430,7 +498,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         </div>
       </div>
       {showPanel ? (
-        <div className={styles.attachPanel}>
+        <div ref={panelRef} className={styles.attachPanel}>
           {recentPhotos.length > 0 ? (
             <div className={styles.recentRow}>
               {recentPhotos.map((photo) => {
@@ -457,7 +525,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               type="button"
               className={styles.attachAction}
               onClick={() => {
-                setShowPanel(false)
+                closePanel()
                 cameraInputRef.current?.click()
               }}
             >
@@ -470,7 +538,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               type="button"
               className={styles.attachAction}
               onClick={() => {
-                setShowPanel(false)
+                closePanel()
                 galleryInputRef.current?.click()
               }}
             >
@@ -483,7 +551,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               type="button"
               className={styles.attachAction}
               onClick={() => {
-                setShowPanel(false)
+                closePanel()
                 fileInputRef.current?.click()
               }}
             >

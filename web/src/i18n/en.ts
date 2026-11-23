@@ -20,6 +20,11 @@ export const en = {
   cancel: 'Cancel',
   delete: 'Delete',
   sessionItemMenuRenameOption: 'Rename',
+  sessionMenuMultiSelect: 'Select',
+  sessionMenuPin: 'Pin to top',
+  sessionMenuUnpin: 'Unpin',
+  sessionPinnedGroup: 'Pinned',
+  sessionSelectedCount: '{count} selected',
   more: 'More',
   close: 'Close',
   sessionHistoryTimelineLabelToday: 'Today',
@@ -312,4 +317,6 @@ export const en = {
   webviewDebugWarningBody:
     'This may carry unknown risks. Enable it only if you know exactly what you are doing; otherwise leave it off.',
   webviewDebugConfirm: 'Enable anyway',
+  costEstimateLabel: 'About the cost',
+  costEstimateHint: 'For reference only, actual billing may differ',
 } satisfies Record<keyof typeof zh, string>

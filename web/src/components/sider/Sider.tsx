@@ -8,6 +8,7 @@ import {
 } from '../base/icons.js'
 import { setSiderCollapsed } from '../../services/settings.js'
 import { groupSessions } from '../../services/chat/sessionGroups.js'
+import { pinSessions, unpinSessions, usePinnedSessions } from '../../services/chat/pins.js'
 import { removeSession, selectSession, useChatStore } from '../../services/chat/store.js'
 import { searchHistory, type SearchMatch } from '../../services/chat/search.js'
 import type { SessionSummary } from '../../services/chat/types.js'
@@ -16,7 +17,7 @@ import { IconButton } from '../base/IconButton.js'
 import { Modal } from '../base/Modal.js'
 import { showToast } from '../base/toastState.js'
 import { openSettings } from '../settings/settingsDialogState.js'
-import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
+import { closeMobileSider, siderOffset, SIDER_WIDTH, useMobileSider } from './mobileSiderState.js'
 import { AccountFooter } from './AccountFooter.js'
 import { SessionItem } from './SessionItem.js'
 import styles from './Sider.module.css'
@@ -24,15 +25,55 @@ import styles from './Sider.module.css'
 /** 侧边栏会话列表每次渲染的条数；滚动到底部附近继续追加 */
 const PAGE_SIZE = 40
 
+/** 置顶分组的 key，永远排在所有时间分组之前 */
+const PINNED_GROUP_KEY = '__pinned'
+
+type SiderGroup = {
+  key: string
+  label: string
+  sessions: SessionSummary[]
+  /** 置顶分组：顶部固定，样式与时间分组一致 */
+  pinned?: boolean
+}
+
 /** 展开的侧边栏：名称与收起按钮、搜索历史、开启新对话、按时间分组的会话列表、底部设置；移动端放在抽屉里 */
 export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const t = useTranslate()
-  const appName = t('appName')
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
   const [now, setNow] = useState(Date.now)
   const groups = useMemo(() => groupSessions(sessions, now, t), [sessions, now, t])
+  const pinnedIds = usePinnedSessions((state) => state.pinned)
+  /** 置顶分组永远在最前，其余仍是今天 / 昨天 / 7 天内… */
+  const allGroups = useMemo<SiderGroup[]>(() => {
+    const byId = new Map(sessions.map((session) => [session.id, session]))
+    const pinnedSessions = pinnedIds
+      .map((id) => byId.get(id))
+      .filter((session): session is SessionSummary => Boolean(session))
+    const pinnedSet = new Set(pinnedSessions.map((session) => session.id))
+    const rest: SiderGroup[] = groups
+      .map((group) => ({
+        ...group,
+        sessions: group.sessions.filter((session) => !pinnedSet.has(session.id)),
+      }))
+      .filter((group) => group.sessions.length > 0)
+    return pinnedSessions.length > 0
+      ? [
+          {
+            key: PINNED_GROUP_KEY,
+            label: t('sessionPinnedGroup'),
+            sessions: pinnedSessions,
+            pinned: true,
+          },
+          ...rest,
+        ]
+      : rest
+  }, [groups, pinnedIds, sessions, t])
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkPending, setBulkPending] = useState(false)
   const [deletePending, setDeletePending] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchMatch[]>([])
@@ -47,8 +88,8 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
 
   const limitedGroups = useMemo(() => {
     let remaining = visibleCount
-    const out: typeof groups = []
-    for (const group of groups) {
+    const out: SiderGroup[] = []
+    for (const group of allGroups) {
       if (remaining <= 0) {
         break
       }
@@ -57,7 +98,15 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
       out.push(take === group.sessions.length ? group : { ...group, sessions: group.sessions.slice(0, take) })
     }
     return out
-  }, [groups, visibleCount])
+  }, [allGroups, visibleCount])
+
+  const exitSelection = () => {
+    setSelectionMode(false)
+    setSelectedIds([])
+  }
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
 
   const onListScroll = useCallback(() => {
     const element = listRef.current
@@ -133,30 +182,66 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   return (
     <div className={clsx(styles.sider, mobile && styles.mobile)}>
       <div className={styles.top}>
-        <div className={styles.appName}>{appName}</div>
-        <IconButton
-          size="m"
-          icon={<IconPanelLeftOutline16 />}
-          tooltip={t('collapseSiderbarButton')}
-          tooltipPlacement="bottom"
-          onClick={() => (mobile ? closeMobileSider() : setSiderCollapsed(true))}
-        />
+        <div className={styles.searchBox}>
+          <span className={styles.searchIcon}>
+            <IconSearchOutline16 />
+          </span>
+          <input
+            className={styles.searchInput}
+            type="text"
+            inputMode="search"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={t('searchHistoryPlaceholder')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
       </div>
-      <div className={styles.searchBox}>
-        <span className={styles.searchIcon}>
-          <IconSearchOutline16 />
-        </span>
-        <input
-          className={styles.searchInput}
-          type="text"
-          inputMode="search"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={t('searchHistoryPlaceholder')}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </div>
+      {selectionMode ? (
+        <div className={styles.selectionBar}>
+          <div className={styles.selectionHead}>
+            <span className={styles.selectionCount}>
+              {t('sessionSelectedCount', { count: String(selectedIds.length) })}
+            </span>
+            <button type="button" className={styles.selectionCancel} onClick={exitSelection}>
+              {t('cancel')}
+            </button>
+          </div>
+          <div className={styles.selectionActions}>
+            <button
+              type="button"
+              className={styles.selectionAction}
+              disabled={selectedIds.length === 0}
+              onClick={() => {
+                pinSessions(selectedIds)
+                exitSelection()
+              }}
+            >
+              {t('sessionMenuPin')}
+            </button>
+            <button
+              type="button"
+              className={styles.selectionAction}
+              disabled={selectedIds.length === 0}
+              onClick={() => {
+                unpinSessions(selectedIds)
+                exitSelection()
+              }}
+            >
+              {t('sessionMenuUnpin')}
+            </button>
+            <button
+              type="button"
+              className={clsx(styles.selectionAction, styles.selectionDanger)}
+              disabled={selectedIds.length === 0}
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              {t('delete')}
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className={styles.listWrap}>
         {searchingMode ? (
           <div className={styles.searchResults}>
@@ -190,13 +275,20 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         ) : (
           <div className={styles.list} ref={listRef} onScroll={onListScroll}>
             {limitedGroups.map((group) => (
-              <div key={group.key} className={styles.section}>
+              <div
+                key={group.key}
+                className={clsx(styles.section, group.pinned && styles.pinnedSection)}
+              >
                 <div className={styles.sectionHeader}>{group.label}</div>
                 {group.sessions.map((session) => (
                   <SessionItem
                     key={session.id}
                     session={session}
                     active={session.id === activeId}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.includes(session.id)}
+                    onToggleSelect={() => toggleSelected(session.id)}
+                    onMultiSelect={() => setSelectionMode(true)}
                     onDelete={() => setDeleting(session)}
                   />
                 ))}
@@ -213,6 +305,16 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
           </span>
           <span className={styles.settingsLabel}>{t('settings')}</span>
         </button>
+        {mobile ? null : (
+          <IconButton
+            size="m"
+            icon={<IconPanelLeftOutline16 />}
+            tooltip={t('collapseSiderbarButton')}
+            tooltipPlacement="top"
+            className={styles.collapseButton}
+            onClick={() => setSiderCollapsed(true)}
+          />
+        )}
       </div>
       {deleting ? (
         <Modal
@@ -251,20 +353,87 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
           {t('deleteSessionWithFilesDescription')}
         </Modal>
       ) : null}
+      {bulkDeleteOpen ? (
+        <Modal
+          title={t('deleteSessionModalContentTitle')}
+          onClose={() => {
+            if (!bulkPending) {
+              setBulkDeleteOpen(false)
+            }
+          }}
+          footer={
+            <>
+              <Button
+                variant="outlined"
+                disabled={bulkPending}
+                onClick={() => setBulkDeleteOpen(false)}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                disabled={bulkPending}
+                onClick={async () => {
+                  setBulkPending(true)
+                  try {
+                    for (const id of selectedIds) {
+                      await removeSession(id)
+                    }
+                    setBulkDeleteOpen(false)
+                    exitSelection()
+                  } finally {
+                    setBulkPending(false)
+                  }
+                }}
+              >
+                {t('delete')}
+              </Button>
+            </>
+          }
+        >
+          {t('deleteSessionWithFilesDescription')}
+        </Modal>
+      ) : null}
     </div>
   )
 }
 
-/** 移动端抽屉：浮在页面上方，点空白区域关闭。 */
+/** 移动端抽屉：浮在页面上方，点空白区域关闭；拖动时跟手移动。 */
 export const MobileSider = () => {
   const open = useMobileSider((state) => state.open)
-  if (!open) {
+  const drag = useMobileSider((state) => state.drag)
+  const dragging = useMobileSider((state) => state.dragging)
+  // 从拖动开始展开时不要再播放入场关键帧，否则松手会从 -100% 重新滑入
+  const fromDragRef = useRef(false)
+  if (drag !== null) {
+    fromDragRef.current = true
+  }
+  useEffect(() => {
+    if (!open && drag === null) {
+      fromDragRef.current = false
+    }
+  }, [open, drag])
+  if (!open && drag === null) {
     return null
   }
+  // 与主界面共用同一个位移：抽屉右边缘始终贴着主界面左边缘
+  const offset = siderOffset(open, drag)
   return (
     <>
       <div className={styles.drawerMask} onClick={closeMobileSider} />
-      <div className={styles.drawer}>
+      <div
+        className={styles.drawer}
+        style={
+          fromDragRef.current
+            ? {
+                transform: `translateX(${offset - SIDER_WIDTH}px)`,
+                animation: 'none',
+                // 只有手指拖动中才关过渡；松手后的开合仍要动画
+                transition: dragging ? 'none' : undefined,
+              }
+            : undefined
+        }
+      >
         <Sider mobile />
       </div>
     </>
