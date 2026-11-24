@@ -33,6 +33,8 @@ import styles from './MessageList.module.css'
 
 /** 距底部小于该值时视为在底部，流式内容增长时跟随 */
 const STICKY_THRESHOLD = 40
+/** 每帧追赶剩余距离的比例：越大越紧跟，越小越柔和 */
+const FOLLOW_RATE = 0.32
 const EMPTY_VERSIONS: MessageVersions = { ids: [], index: -1 }
 
 export const MessageList = ({
@@ -66,12 +68,60 @@ export const MessageList = ({
   }
   const versions = versionsRef.current
   const lastMessageId = messages.at(-1)?.id
+  // 跟随动画的帧句柄与「正在自动滚动」标记：自动滚动期间的 scroll 事件不参与
+  // 是否贴底的计算，否则追不上内容增长时会被误判成用户上滑而中断跟随。
+  const rafRef = useRef(0)
+  const animatingRef = useRef(false)
+
+  const stopFollow = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
+    animatingRef.current = false
+  }, [])
+
+  const jumpToBottom = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) {
+      return
+    }
+    stopFollow()
+    el.scrollTop = el.scrollHeight
+    scrollTopRef.current = el.scrollTop
+  }, [stopFollow])
+
+  /**
+   * 平滑跟随底部：每帧追剩余距离的一部分，而不是每次更新都直接赋值。
+   * 流式输出时内容每几十毫秒就长高一次，直接赋值会表现为「一卡一卡往下刷」。
+   */
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
-    if (el && stickyRef.current) {
-      el.scrollTop = el.scrollHeight
-      scrollTopRef.current = el.scrollTop
+    if (!el || !stickyRef.current || rafRef.current) {
+      return
     }
+    animatingRef.current = true
+    const step = () => {
+      const node = scrollRef.current
+      if (!node || !stickyRef.current) {
+        rafRef.current = 0
+        animatingRef.current = false
+        return
+      }
+      const target = node.scrollHeight - node.clientHeight
+      const delta = target - node.scrollTop
+      if (delta <= 0.5) {
+        node.scrollTop = target
+        scrollTopRef.current = node.scrollTop
+        rafRef.current = 0
+        animatingRef.current = false
+        return
+      }
+      node.scrollTop += Math.max(1.2, delta * FOLLOW_RATE)
+      scrollTopRef.current = node.scrollTop
+      rafRef.current = requestAnimationFrame(step)
+    }
+    rafRef.current = requestAnimationFrame(step)
   }, [])
 
   // 内容、键盘和输入框高度变化时，继续遵循当前跟随状态。
@@ -115,8 +165,9 @@ export const MessageList = ({
       return
     }
     stickyRef.current = true
-    scrollToBottom()
-  }, [session.id, lastMessageId, scrollToBottom])
+    // 切换会话/新增消息先直接贴底，避免从上一段位置滑过去
+    jumpToBottom()
+  }, [session.id, lastMessageId, jumpToBottom])
 
   useEffect(closeSearchPanel, [session.id, lastMessageId])
 
@@ -145,12 +196,16 @@ export const MessageList = ({
       el.scrollTop = scrollTopRef.current
     }
     const onScroll = () => {
+      scrollTopRef.current = el.scrollTop
+      // 自动跟随本身也会触发 scroll，这不代表用户离开底部
+      if (animatingRef.current) {
+        return
+      }
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICKY_THRESHOLD
       // 只以「是否接近底部」为准：用户上滑后立刻停止跟随。
       // 不再用方向判断，避免流式内容持续增高时反复把视图拽回底部（表现为抽搐）。
       stickyRef.current = nearBottom
       setShowScrollButton(!nearBottom)
-      scrollTopRef.current = el.scrollTop
     }
     // 手指按下的瞬间如果不在底部，就先松开跟随，避免手势与自动贴底互相拉扯
     const onTouchStart = () => {
@@ -158,14 +213,20 @@ export const MessageList = ({
       if (!nearBottom) {
         stickyRef.current = false
       }
+      // 用户接管滚动：立即停下跟随动画，别和手指抢
+      stopFollow()
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('wheel', onTouchStart, { passive: true })
     return () => {
       el.removeEventListener('scroll', onScroll)
       el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('wheel', onTouchStart)
     }
-  }, [isMobile, scrollToBottom])
+  }, [isMobile, scrollToBottom, stopFollow])
+
+  useEffect(() => stopFollow, [stopFollow])
 
   const lastIndex = messages.length - 1
   const uploadRetryId = getUploadRetryId(messages, streaming)

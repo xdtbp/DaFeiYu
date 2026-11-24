@@ -11,7 +11,7 @@ import type {
 import { CitationLink } from '../search/CitationLink.js'
 import { CodeBlock } from './CodeBlock.js'
 import { ImageAsLink, Link } from './Link.js'
-import { InlineMath, MathBlock } from './MathFormula.js'
+import { InlineMath, MathBlock, MathStreamingContext } from './MathFormula.js'
 
 const Html = memo(function Html({ value }: { value: string }) {
   if (/^<br\s*\/?>$/i.test(value)) {
@@ -217,10 +217,13 @@ export const MarkdownAstRenderer = memo(function MarkdownAstRenderer({
   onUpdate,
   className,
   loading = false,
+  trailing = null,
 }: {
   ast: Root
   className?: string
   loading?: boolean
+  /** 正文之后追加的内容（流式中未闭合的公式占位） */
+  trailing?: ReactNode
   /**
    * layoutEffect 之后触发 -> 进行页面滚动
    */
@@ -236,12 +239,15 @@ export const MarkdownAstRenderer = memo(function MarkdownAstRenderer({
     () => (
       <div className={clsx('ds-markdown', className)}>
         {/* 解析器在根节点下产出块级内容。 */}
-        <MarkdownBlockContentOrDefinitionContent
-          nodes={ast.children as Array<BlockContent | DefinitionContent>}
-          loading={loading}
-        />
+        <MathStreamingContext.Provider value={loading}>
+          <MarkdownBlockContentOrDefinitionContent
+            nodes={ast.children as Array<BlockContent | DefinitionContent>}
+            loading={loading}
+          />
+          {trailing}
+        </MathStreamingContext.Provider>
       </div>
     ),
-    [className, ast.children, loading]
+    [className, ast.children, loading, trailing]
   )
 })

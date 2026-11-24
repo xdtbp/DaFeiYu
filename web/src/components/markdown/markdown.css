@@ -241,6 +241,54 @@
   margin-bottom: 0;
 }
 
+/* 流式输出里公式还没写完：先占位，写完再渲染，避免几秒的 LaTeX 原文糊在正文里 */
+.ds-markdown .ds-math-pending {
+  display: inline-block;
+  width: 1.6em;
+  height: 0.95em;
+  vertical-align: -0.12em;
+  border-radius: 4px;
+  background-color: var(--dsw-alias-bg-skeleton, rgba(0, 0, 0, 0.06));
+  animation: ds-math-pulse 1.2s ease-in-out infinite;
+}
+
+.ds-markdown .ds-math-pending-block {
+  display: block;
+  width: min(260px, 70%);
+  height: 2.4em;
+  margin: 0 auto;
+  border-radius: 6px;
+  background-color: var(--dsw-alias-bg-skeleton, rgba(0, 0, 0, 0.06));
+  animation: ds-math-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ds-math-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-markdown .ds-math-pending,
+  .ds-markdown .ds-math-pending-block {
+    animation: none;
+  }
+}
+
+/* 流式结束后仍渲染失败（未闭合或语法非法）：保留原文，用等宽样式表明这是源码 */
+.ds-markdown .ds-math-raw {
+  font-family: var(--ds-font-family-code);
+  font-size: 0.92em;
+  opacity: 0.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .ds-markdown li > .ds-markdown-paragraph {
   margin: 8px 0;
 }
