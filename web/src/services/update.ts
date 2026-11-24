@@ -15,7 +15,7 @@ export const getAppVersion = (): string => {
   } catch {
     /* 回退到默认 */
   }
-  return '0.7.0'
+  return '0.8.0'
 }
 
 /** 语义化版本比较：a > b 返回正数，a < b 返回负数，相等返回 0 */

@@ -588,6 +588,27 @@ class MainActivity : Activity() {
             return enabled
         }
 
+        /**
+         * 切换输入法对窗口的影响：
+         * - true  → ADJUST_RESIZE，主输入框随键盘上移（默认）
+         * - false → ADJUST_NOTHING，键盘覆盖不挤压窗口，侧边栏搜索聚焦时使用
+         */
+        @android.webkit.JavascriptInterface
+        fun setKeyboardResize(enabled: Boolean) {
+            runOnUiThread {
+                window.setSoftInputMode(
+                    if (enabled) WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                    else WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                )
+            }
+        }
+
+        /** 当前是否处于「键盘挤压窗口」模式（用于前端校验） */
+        @android.webkit.JavascriptInterface
+        fun keyboardResizeEnabled(): Boolean =
+            (window.attributes.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST) ==
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+
         /** 不同意免责声明时退出应用 */
         @android.webkit.JavascriptInterface
         fun exitApp() {

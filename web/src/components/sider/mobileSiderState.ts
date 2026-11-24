@@ -3,8 +3,8 @@ import { create } from 'zustand'
 /** 抽屉宽度，与 `.mobile` 侧边栏宽度保持一致 */
 export const SIDER_WIDTH = 300
 
-/** 松手判定阈值：拉出超过 40% 即展开，否则回弹收起 */
-export const SETTLE_RATIO = 0.4
+/** 松手判定阈值：拉出超过 25% 即展开，否则回弹收起 */
+export const SETTLE_RATIO = 0.25
 
 /** 收起动画时长，与 CSS 的 transition 保持一致 */
 const CLOSE_MS = 240

@@ -423,17 +423,11 @@
   z-index: 800;
   touch-action: pan-y;
   transition: transform 0.24s var(--ds-ease-in-out);
-  animation: drawerIn 0.24s var(--ds-ease-in-out);
 }
 
-@keyframes drawerIn {
-  from {
-    transform: translateX(-100%);
-  }
-
-  to {
-    transform: translateX(0);
-  }
+/* 收起后抽屉仍在 DOM 里（保留滚动位置），只是移到屏幕外，不能再接点击 */
+.drawerHidden {
+  pointer-events: none;
 }
 
 .drawerMask {

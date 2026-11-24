@@ -5,6 +5,7 @@ import {
 } from '../base/icons.js'
 import { useTranslate } from '../../i18n/index.js'
 import { newChat } from '../../services/chat/store.js'
+import { scrollSiderToTop } from '../sider/siderListControl.js'
 import { IconButton } from '../base/IconButton.js'
 import { openSettings } from '../settings/settingsDialogState.js'
 import { openMobileSider } from '../sider/mobileSiderState.js'
@@ -28,7 +29,10 @@ export const MobileHeader = ({ title }: { title?: string }) => {
         tone="primary"
         icon={<IconNewChatOutline20 />}
         aria-label={t('newChat')}
-        onClick={newChat}
+        onClick={() => {
+          scrollSiderToTop()
+          newChat()
+        }}
       />
       <IconButton
         size="xl"

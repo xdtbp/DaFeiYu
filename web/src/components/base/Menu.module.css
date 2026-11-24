@@ -9,6 +9,9 @@
   min-width: 124px;
   padding: 4px;
   border-radius: 12px;
+  /* 点击「⋯」后从触发点轻微放大淡入，而不是瞬间弹出 */
+  transform-origin: top left;
+  animation: menuPopIn 0.16s var(--ds-ease-in-out) both;
   background-color: var(--dsw-specific-menu);
   box-shadow:
     0 0 1px rgba(0, 0, 0, 0.2),
@@ -43,5 +46,17 @@
 
   &:hover {
     background-color: var(--dsw-alias-interactive-bg-hover-danger);
+  }
+}
+
+@keyframes menuPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }

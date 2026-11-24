@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import {
   IconPanelLeftOutline16,
@@ -18,12 +18,17 @@ import { Modal } from '../base/Modal.js'
 import { showToast } from '../base/toastState.js'
 import { openSettings } from '../settings/settingsDialogState.js'
 import { closeMobileSider, siderOffset, SIDER_WIDTH, useMobileSider } from './mobileSiderState.js'
+import { setKeyboardResize } from '../../services/keyboard.js'
+import {
+  clearSiderReveal,
+  registerSiderList,
+  revealSiderSession,
+  SIDER_PAGE_SIZE,
+  useSiderListControl,
+} from './siderListControl.js'
 import { AccountFooter } from './AccountFooter.js'
 import { SessionItem } from './SessionItem.js'
 import styles from './Sider.module.css'
-
-/** 侧边栏会话列表每次渲染的条数；滚动到底部附近继续追加 */
-const PAGE_SIZE = 40
 
 /** 置顶分组的 key，永远排在所有时间分组之前 */
 const PINNED_GROUP_KEY = '__pinned'
@@ -37,7 +42,7 @@ type SiderGroup = {
 }
 
 /** 展开的侧边栏：名称与收起按钮、搜索历史、开启新对话、按时间分组的会话列表、底部设置；移动端放在抽屉里 */
-export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
+export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?: boolean }) => {
   const t = useTranslate()
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
@@ -76,15 +81,61 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const [bulkPending, setBulkPending] = useState(false)
   const [deletePending, setDeletePending] = useState(false)
   const [query, setQuery] = useState('')
+  const searchingMode = query.trim().length > 0
   const [results, setResults] = useState<SearchMatch[]>([])
   const [searching, setSearching] = useState(false)
   // 会话可能有上千条，一次全量渲染会把抽屉动画拖到卡死：按页增量渲染
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [visibleCount, setVisibleCount] = useState(SIDER_PAGE_SIZE)
+  // 待定位的会话：搜索命中后滚到视野中间
+  const [pendingReveal, setPendingReveal] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
+  const orderedIds = useMemo(
+    () => allGroups.flatMap((group) => group.sessions.map((session) => session.id)),
+    [allGroups]
+  )
+
+  // 列表常驻，滚动位置天然保留；只有搜索命中需要主动定位：
+  // 先把目标所在的那一页渲染出来，再由下面的 layoutEffect 滚到中间。
+  const reveal = useSiderListControl((state) => state.reveal)
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE)
-  }, [sessions.length, query])
+    if (!reveal) {
+      return
+    }
+    clearSiderReveal()
+    const index = orderedIds.indexOf(reveal.id)
+    if (index < 0) {
+      return
+    }
+    // 多渲染半屏，目标下方才有内容，才能滚到视口中间而不是贴在底部
+    setVisibleCount((prev) => Math.max(prev, index + 1 + Math.floor(SIDER_PAGE_SIZE / 2)))
+    setPendingReveal(reveal.id)
+  }, [reveal, orderedIds])
+
+  useLayoutEffect(() => {
+    if (!pendingReveal) {
+      return
+    }
+    const element = listRef.current
+    const target = element?.querySelector(`[data-session-id="${CSS.escape(pendingReveal)}"]`)
+    if (!element || !(target instanceof HTMLElement)) {
+      // 列表还没挂出来（搜索面板仍占据位置），等下一次渲染再看
+      return
+    }
+    const listRect = element.getBoundingClientRect()
+    const targetRect = target.getBoundingClientRect()
+    const desired =
+      targetRect.top - listRect.top + element.scrollTop - (element.clientHeight - targetRect.height) / 2
+    element.scrollTop = Math.max(0, desired)
+    setPendingReveal(null)
+  }, [pendingReveal, visibleCount, searchingMode])
+
+  // 列表节点登记给「新建对话回到顶部」用
+  useEffect(() => {
+    registerSiderList(listRef.current)
+    return () => registerSiderList(null)
+  }, [searchingMode])
 
   const limitedGroups = useMemo(() => {
     let remaining = visibleCount
@@ -113,10 +164,14 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
     if (!element) {
       return
     }
-    if (element.scrollTop + element.clientHeight >= element.scrollHeight - 320) {
-      setVisibleCount((count) => (count >= sessions.length ? count : count + PAGE_SIZE))
+    const nextVisible =
+      element.scrollTop + element.clientHeight >= element.scrollHeight - 320
+        ? Math.min(sessions.length, Math.max(visibleCount, visibleCount + SIDER_PAGE_SIZE))
+        : visibleCount
+    if (nextVisible !== visibleCount) {
+      setVisibleCount(nextVisible)
     }
-  }, [sessions.length])
+  }, [sessions.length, visibleCount])
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
@@ -171,12 +226,29 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
     }
   }, [query])
 
-  const searchingMode = query.trim().length > 0
-
   const openResult = (sessionId: string) => {
+    revealSiderSession(sessionId)
     selectSession(sessionId)
     closeMobileSider()
     setQuery('')
+  }
+
+  // 列表不再卸载，抽屉关掉时手动清搜索、收键盘，行为跟以前一致
+  useEffect(() => {
+    if (open) {
+      return
+    }
+    setQuery('')
+    searchInputRef.current?.blur()
+    if (mobile) {
+      setKeyboardResize(true)
+    }
+  }, [open, mobile])
+
+  // 点击列表里的某个会话：位置不用管，列表一直在，浏览器自然记得
+  const handleSessionSelect = (sessionId: string) => {
+    selectSession(sessionId)
+    closeMobileSider()
   }
 
   return (
@@ -187,6 +259,7 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
             <IconSearchOutline16 />
           </span>
           <input
+            ref={searchInputRef}
             className={styles.searchInput}
             type="text"
             inputMode="search"
@@ -195,6 +268,17 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
             placeholder={t('searchHistoryPlaceholder')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            // 搜索时键盘只覆盖、不挤压窗口，底部输入框不会被顶起来
+            onFocus={() => {
+              if (mobile) {
+                setKeyboardResize(false)
+              }
+            }}
+            onBlur={() => {
+              if (mobile) {
+                setKeyboardResize(true)
+              }
+            }}
           />
         </div>
       </div>
@@ -289,6 +373,7 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
                     selected={selectedIds.includes(session.id)}
                     onToggleSelect={() => toggleSelected(session.id)}
                     onMultiSelect={() => setSelectionMode(true)}
+                    onSelect={() => handleSessionSelect(session.id)}
                     onDelete={() => setDeleting(session)}
                   />
                 ))}
@@ -398,43 +483,35 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   )
 }
 
-/** 移动端抽屉：浮在页面上方，点空白区域关闭；拖动时跟手移动。 */
+/**
+ * 移动端抽屉：浮在页面上方，点空白区域关闭；拖动时跟手移动。
+ *
+ * 抽屉只做位移、始终挂载：列表和滚动位置由浏览器自己保留，
+ * 不再有「关闭保存 / 打开恢复」那一套，也就不会出现恢复错位或回顶。
+ */
 export const MobileSider = () => {
   const open = useMobileSider((state) => state.open)
   const drag = useMobileSider((state) => state.drag)
   const dragging = useMobileSider((state) => state.dragging)
-  // 从拖动开始展开时不要再播放入场关键帧，否则松手会从 -100% 重新滑入
-  const fromDragRef = useRef(false)
-  if (drag !== null) {
-    fromDragRef.current = true
-  }
-  useEffect(() => {
-    if (!open && drag === null) {
-      fromDragRef.current = false
-    }
-  }, [open, drag])
-  if (!open && drag === null) {
-    return null
-  }
+  const visible = open || drag !== null
   // 与主界面共用同一个位移：抽屉右边缘始终贴着主界面左边缘
   const offset = siderOffset(open, drag)
   return (
     <>
-      <div className={styles.drawerMask} onClick={closeMobileSider} />
       <div
-        className={styles.drawer}
-        style={
-          fromDragRef.current
-            ? {
-                transform: `translateX(${offset - SIDER_WIDTH}px)`,
-                animation: 'none',
-                // 只有手指拖动中才关过渡；松手后的开合仍要动画
-                transition: dragging ? 'none' : undefined,
-              }
-            : undefined
-        }
+        className={clsx(styles.drawerMask, !visible && styles.drawerHidden)}
+        onClick={visible ? closeMobileSider : undefined}
+      />
+      <div
+        className={clsx(styles.drawer, !visible && styles.drawerHidden)}
+        aria-hidden={!visible}
+        style={{
+          transform: `translateX(${offset - SIDER_WIDTH}px)`,
+          // 只有手指拖动中才关过渡；松手后的开合仍要动画
+          transition: dragging ? 'none' : undefined,
+        }}
       >
-        <Sider mobile />
+        <Sider mobile open={visible} />
       </div>
     </>
   )

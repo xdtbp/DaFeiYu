@@ -89,8 +89,44 @@ export const App = () => {
   // 启动检查更新：发现更高版本时弹窗，可更新 / 稍后 / 跳过此版本
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const updateChecked = useRef(false)
+  // 加载态：对话渲染完成后淡出，避免白屏闪烁
+  const loading = !ready || (activeId !== null && !session)
+  const [loadingExiting, setLoadingExiting] = useState(false)
+  const loadingExitDoneRef = useRef(false)
 
   usePreventPageScroll(isMobile)
+
+  // 加载结束：等两帧确保对话已渲染，再淡出加载层
+  useEffect(() => {
+    if (loading) {
+      loadingExitDoneRef.current = false
+      setLoadingExiting(false)
+      return
+    }
+    if (loadingExitDoneRef.current || loadingExiting) {
+      return
+    }
+    let raf2 = 0
+    const raf = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        loadingExitDoneRef.current = true
+        setLoadingExiting(true)
+      })
+    })
+    return () => {
+      cancelAnimationFrame(raf)
+      cancelAnimationFrame(raf2)
+    }
+  }, [loading, loadingExiting])
+
+  // 淡出动画结束后卸载加载层
+  useEffect(() => {
+    if (!loadingExiting) {
+      return
+    }
+    const timer = setTimeout(() => setLoadingExiting(false), 180)
+    return () => clearTimeout(timer)
+  }, [loadingExiting])
 
   // 点击消息 / 附件里的图片，全屏预览
   useEffect(() => {
@@ -213,6 +249,19 @@ export const App = () => {
       setSiderDrag(Math.min(SIDER_WIDTH, Math.max(0, offset)))
     }
 
+    // 跟手拖到一半被系统取消（来电、切后台、输入法抢手势）时，按当前位移收口，
+    // 否则抽屉会停在半开位置、过渡也被拖住出不来。
+    const settleByOffset = () => {
+      // 打开：offset 即向右拖动的距离；关闭：offset 是剩余拉出的宽度，
+      // 换算成「朝动作方向拖动的距离」，开与关都用同一个 25% 阈值。
+      const offset = useMobileSider.getState().drag ?? 0
+      const dragged = baseOpen ? SIDER_WIDTH - offset : offset
+      const shouldOpen = baseOpen
+        ? dragged < SIDER_WIDTH * SETTLE_RATIO
+        : dragged >= SIDER_WIDTH * SETTLE_RATIO
+      settleSider(shouldOpen)
+    }
+
     const onEnd = (event: TouchEvent) => {
       const wasDragging = dragging
       dragging = false
@@ -225,9 +274,7 @@ export const App = () => {
       const dy = touch.clientY - startY
       blocked = false
       if (wasDragging) {
-        // 达到 40% 即展开，否则回弹收起
-        const offset = useMobileSider.getState().drag ?? 0
-        settleSider(offset >= SIDER_WIDTH * SETTLE_RATIO)
+        settleByOffset()
         return
       }
       // 快速轻扫（没进入跟手阶段）也允许开合
@@ -247,7 +294,12 @@ export const App = () => {
     window.addEventListener('touchmove', onMove, { passive: false })
     window.addEventListener('touchend', onEnd, { passive: true })
     const onCancel = () => {
+      const wasDragging = dragging
+      dragging = false
       blocked = false
+      if (wasDragging) {
+        settleByOffset()
+      }
     }
     window.addEventListener('touchcancel', onCancel)
     return () => {
@@ -449,10 +501,26 @@ export const App = () => {
           ) : null}
           <div className={styles.content}>
             {siderCollapsed ? <CollapsedSider /> : null}
-            {!ready || (activeId !== null && !session) ? (
-              <div className={styles.loadingView}>
+            {!loading ? (
+              session ? (
+                <SessionView
+                  session={session}
+                  streaming={streaming}
+                  siderCollapsed={siderCollapsed}
+                />
+              ) : (
+                <Welcome />
+              )
+            ) : null}
+            {loading || loadingExiting ? (
+              <div
+                className={`${styles.loadingView}${loadingExiting ? ` ${styles.loadingExit}` : ''}`}
+              >
                 {isMobile ? <MobileHeader /> : null}
                 <div className={styles.loadingState} role="status" aria-live="polite">
+                  {!(!ready ? initError : sessionLoadError) ? (
+                    <span className={styles.spinner} aria-hidden />
+                  ) : null}
                   <span>
                     {(!ready ? initError : sessionLoadError)
                       ? t(!ready ? 'sessionListLoadFailed' : 'sessionLoadFailed')
@@ -475,15 +543,7 @@ export const App = () => {
                   ) : null}
                 </div>
               </div>
-            ) : session ? (
-              <SessionView
-                session={session}
-                streaming={streaming}
-                siderCollapsed={siderCollapsed}
-              />
-            ) : (
-              <Welcome />
-            )}
+            ) : null}
           </div>
         </main>
         <SearchPanel />

@@ -25,6 +25,7 @@ export const SessionItem = memo(function SessionItem({
   onDelete,
   onToggleSelect,
   onMultiSelect,
+  onSelect,
 }: {
   session: SessionSummary
   active: boolean
@@ -33,6 +34,7 @@ export const SessionItem = memo(function SessionItem({
   onDelete: () => void
   onToggleSelect?: () => void
   onMultiSelect?: () => void
+  onSelect?: () => void
 }) {
   const t = useTranslate()
   const [editing, setEditing] = useState(false)
@@ -74,9 +76,14 @@ export const SessionItem = memo(function SessionItem({
         selectionMode && styles.selectable,
         selected && styles.selected
       )}
+      data-session-id={session.id}
       onClick={() => {
         if (selectionMode) {
           onToggleSelect?.()
+          return
+        }
+        if (onSelect) {
+          onSelect()
           return
         }
         selectSession(session.id)

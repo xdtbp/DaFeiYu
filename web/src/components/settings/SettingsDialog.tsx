@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   IconDataOutline16,
   IconDownloadOutline16,
@@ -789,6 +789,25 @@ const AboutDialog = ({ onClose }: { onClose: () => void }) => {
   const [update, setUpdate] = useState<UpdateState>('idle')
   const [latestVersion, setLatestVersion] = useState('')
   const [releaseUrl, setReleaseUrl] = useState(GITHUB_HOME)
+  // 打开时及时刷新作者头像：通过可用的 api.github.com 解析真实头像地址，避免 github.com 直链加载失败
+  const [avatarUrl, setAvatarUrl] = useState(DEV_AVATAR)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`https://api.github.com/users/${GITHUB_OWNER}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { avatar_url?: string } | null) => {
+        if (!cancelled && typeof data?.avatar_url === 'string' && data.avatar_url) {
+          setAvatarUrl(data.avatar_url)
+        }
+      })
+      .catch(() => {
+        // 解析失败保留默认地址
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const onCheck = async () => {
     setUpdate('checking')
@@ -805,7 +824,7 @@ const AboutDialog = ({ onClose }: { onClose: () => void }) => {
   return (
     <Modal title={t('settingsAbout')} closable className={styles.aboutDialog} onClose={onClose}>
       <div className={styles.about}>
-        <img className={styles.aboutAvatar} src={DEV_AVATAR} alt="" />
+        <img className={styles.aboutAvatar} src={avatarUrl} referrerPolicy="no-referrer" alt="" />
         <div className={styles.aboutName}>{t('aboutDeveloperName')}</div>
         <a className={styles.aboutProject} href={GITHUB_HOME} target="_blank" rel="noreferrer">
           {t('aboutProject')}
