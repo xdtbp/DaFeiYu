@@ -37,6 +37,8 @@ import { Tooltip } from '../base/Tooltip.js'
 import { ensureApiKey } from '../settings/settingsDialogState.js'
 import { DragMask, useFileDrop } from './DragMask.js'
 import { showToast } from '../base/toastState.js'
+import { hydratePhotos, refreshPhotos, startPhotoWatcher, usePhotoCache } from '../../services/photoCache.js'
+import { prepareUploadFile } from '../../services/imageCompress.js'
 import { ACCEPT, useUploads } from '../../services/attachments.js'
 import { DraftAttachments } from './DraftAttachments.js'
 import { useVoiceInput } from './useVoiceInput.js'
@@ -128,29 +130,33 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     }
     return pushBackHandler(closePanel)
   }, [showPanel, closePanel])
-  const [recentPhotos, setRecentPhotos] = useState<Array<{ id: string; thumb: string }>>([])
-
   type NativeBridge = {
     getRecentPhotos?: (limit: number) => string
     getPhotoData?: (id: string) => string
   }
 
-  // 打开面板时向原生读取相册最近照片
+  // 相册缓存：常驻比对，新照片静默进缓存；面板里直接用缓存渲染
+  const recentPhotos = usePhotoCache((state) => state.photos)
+  const freshPhotos = usePhotoCache((state) => state.fresh)
+  const [rowShift, setRowShift] = useState(false)
+
+  useEffect(() => {
+    startPhotoWatcher()
+  }, [])
+
+  // 打开面板：先渲染缓存，等展开动画播完再比对一次，有新图就播插入动画
   useEffect(() => {
     if (!showPanel) {
       return
     }
-    const bridge = (window as unknown as { AndroidMedia?: NativeBridge }).AndroidMedia
-    if (!bridge?.getRecentPhotos) {
-      setRecentPhotos([])
-      return
-    }
-    try {
-      const list = JSON.parse(bridge.getRecentPhotos(12) || '[]')
-      setRecentPhotos(Array.isArray(list) ? list : [])
-    } catch {
-      setRecentPhotos([])
-    }
+    hydratePhotos()
+    const timer = window.setTimeout(() => {
+      if (refreshPhotos()) {
+        setRowShift(true)
+        window.setTimeout(() => setRowShift(false), 320)
+      }
+    }, 300)
+    return () => window.clearTimeout(timer)
   }, [showPanel])
 
   /** 最近照片在草稿里的文件名固定为 photo_<id>.jpg，用来判断是否已选中 */
@@ -200,10 +206,14 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   }
 
   const addFiles = (files: File[]) => {
-    const error = addDraftFiles(sessionId, files, useSettings.getState().apiKey ?? '')
-    if (error) {
-      showToast(error)
-    }
+    // 上传前按「压缩图片」的设置处理一遍（无损模式直接跳过）
+    void (async () => {
+      const prepared = await Promise.all(files.map((file) => prepareUploadFile(file)))
+      const error = addDraftFiles(sessionId, prepared, useSettings.getState().apiKey ?? '')
+      if (error) {
+        showToast(error)
+      }
+    })()
   }
 
   const acceptFiles = (files: File[]) => {
@@ -500,7 +510,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       {showPanel ? (
         <div ref={panelRef} className={styles.attachPanel}>
           {recentPhotos.length > 0 ? (
-            <div className={styles.recentRow}>
+            <div className={clsx(styles.recentRow, rowShift && styles.recentRowShift)}>
               {recentPhotos.map((photo) => {
                 const selected = attachments.some((item) => item.file.name === photoName(photo.id))
                 return (
@@ -508,10 +518,14 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
                     key={photo.id}
                     type="button"
                     aria-pressed={selected}
-                    className={clsx(styles.recentItem, selected && styles.recentItemSelected)}
+                    className={clsx(
+                      styles.recentItem,
+                      selected && styles.recentItemSelected,
+                      freshPhotos.includes(photo.id) && styles.recentItemNew
+                    )}
                     onClick={() => toggleRecentPhoto(photo.id)}
                   >
-                    <img src={photo.thumb} alt="" />
+                    <img src={photo.preview} alt="" decoding="async" />
                     <span className={styles.recentCheck} aria-hidden>
                       <IconCheckOutline20 />
                     </span>

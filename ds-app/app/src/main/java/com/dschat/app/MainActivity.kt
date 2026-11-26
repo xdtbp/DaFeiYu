@@ -1314,6 +1314,99 @@ class MainActivity : Activity() {
             return result.toString()
         }
 
+        /** 预览图缓存：同一张图重复打开面板时不再解码 */
+        private val previewCache = android.util.LruCache<String, String>(48)
+
+        /** 只列最近照片的 id 与时间，不做解码，供前端做增量比对（很轻） */
+        @android.webkit.JavascriptInterface
+        fun listRecentPhotos(limit: Int): String {
+            val result = org.json.JSONArray()
+            val projection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DATE_ADDED,
+            )
+            try {
+                contentResolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection,
+                    null,
+                    null,
+                    "${MediaStore.Images.Media.DATE_ADDED} DESC",
+                )?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                    val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                    var count = 0
+                    while (cursor.moveToNext() && count < limit) {
+                        result.put(
+                            org.json.JSONObject().apply {
+                                put("id", cursor.getLong(idColumn).toString())
+                                put("dateAdded", cursor.getLong(dateColumn))
+                            }
+                        )
+                        count++
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            return result.toString()
+        }
+
+        /** 单张预览：按长边解码到 size，JPEG 85，够清晰又不至于传几 MB 的 base64 */
+        @android.webkit.JavascriptInterface
+        fun getPhotoPreview(id: String, size: Int): String {
+            val target = size.coerceIn(240, 720)
+            val key = "$id@$target"
+            previewCache.get(key)?.let { return it }
+            return try {
+                val uri = android.content.ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    id.toLong(),
+                )
+                val options = android.graphics.BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                contentResolver.openInputStream(uri)?.use {
+                    android.graphics.BitmapFactory.decodeStream(it, null, options)
+                }
+                var sample = 1
+                val longest = maxOf(options.outWidth, options.outHeight)
+                while (longest / sample > target * 2) {
+                    sample *= 2
+                }
+                val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                }
+                val bitmap = contentResolver.openInputStream(uri)?.use {
+                    android.graphics.BitmapFactory.decodeStream(it, null, decodeOptions)
+                } ?: return ""
+                val scale = target.toFloat() / maxOf(bitmap.width, bitmap.height)
+                val scaled = if (scale < 1f) {
+                    android.graphics.Bitmap.createScaledBitmap(
+                        bitmap,
+                        (bitmap.width * scale).toInt().coerceAtLeast(1),
+                        (bitmap.height * scale).toInt().coerceAtLeast(1),
+                        true,
+                    )
+                } else {
+                    bitmap
+                }
+                val stream = java.io.ByteArrayOutputStream()
+                scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, stream)
+                if (scaled !== bitmap) {
+                    scaled.recycle()
+                }
+                bitmap.recycle()
+                val data = "data:image/jpeg;base64," + android.util.Base64.encodeToString(
+                    stream.toByteArray(),
+                    android.util.Base64.NO_WRAP,
+                )
+                previewCache.put(key, data)
+                data
+            } catch (_: Exception) {
+                ""
+            }
+        }
+
         /** 读取选中照片的原图（data URI），供上传 */
         @android.webkit.JavascriptInterface
         fun getPhotoData(id: String): String {

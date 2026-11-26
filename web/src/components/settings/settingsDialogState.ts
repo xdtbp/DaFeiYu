@@ -11,6 +11,8 @@ export type SettingsPage =
   | { key: 'profile' }
   | { key: 'model-config' }
   | { key: 'interface' }
+  | { key: 'image-compress' }
+  | { key: 'chat-compress' }
   | { key: 'relay' }
   | { key: 'relay-edit'; relayId: string | null }
 

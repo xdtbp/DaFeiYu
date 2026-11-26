@@ -1,6 +1,6 @@
 import { useAccount } from '../account.js'
 import { useSettings } from '../settings.js'
-import { ensureRelayToken, normalizeUrl, relayFor, type ApiKind } from '../relay.js'
+import { ensureRelayToken, normalizeUrl, relayFor, relayKey, type ApiKind } from '../relay.js'
 
 /**
  * 官方接口的鉴权头。
@@ -36,7 +36,7 @@ export const resolveAuth = async (
   if (relay) {
     // 令牌快过期时先换一张新的，避免聊到一半 401
     const ready = await ensureRelayToken(relay)
-    const headers: Record<string, string> = { 'x-relay-token': ready.token }
+    const headers: Record<string, string> = { 'x-relay-token': relayKey(ready) }
     if (apiKey) {
       // 中继没配服务端 Key 时，上游用的是这枚客户端 Key
       if (style === 'anthropic') {

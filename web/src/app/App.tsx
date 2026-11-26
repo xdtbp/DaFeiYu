@@ -42,12 +42,13 @@ import { CollapsedSider } from '../components/sider/CollapsedSider.js'
 import {
   closeMobileSider,
   openMobileSider,
-  setSiderDrag,
-  settleSider,
-  siderOffset,
-  SIDER_WIDTH,
-  SETTLE_RATIO,
   useMobileSider,
+  SIDER_WIDTH,
+  applySiderDrag,
+  beginSiderDrag,
+  currentSiderOffset,
+  endSiderDrag,
+  SETTLE_RATIO,
 } from '../components/sider/mobileSiderState.js'
 import { MobileSider, Sider } from '../components/sider/Sider.js'
 import { Modal } from '../components/base/Modal.js'
@@ -73,6 +74,10 @@ export const App = () => {
   const ready = useChatStore((state) => state.ready)
   /** 启动时发现中继有更新的会话：询问是否同步（与更新弹窗互斥，先更新后同步） */
   const [syncAsk, setSyncAsk] = useState<RelayServer | null>(null)
+  // 只有抽屉开着/正在拖时才给 <main> 加 transform：常驻合成层会让文字发虚
+  const siderOpen = useMobileSider((state) => state.open)
+  const siderDragging = useMobileSider((state) => state.dragging)
+  const siderClosing = useMobileSider((state) => state.closing)
   const initError = useChatStore((state) => state.initError)
   const saveError = useChatStore((state) => Object.values(state.sessionSaveErrors).some(Boolean))
   const importingHistory = useChatStore((state) => state.importingHistory)
@@ -89,9 +94,6 @@ export const App = () => {
     state.activeId === null ? false : Object.hasOwn(state.streaming, state.activeId)
   )
   const activeId = useChatStore((state) => state.activeId)
-  const siderOpen = useMobileSider((state) => state.open)
-  const siderDrag = useMobileSider((state) => state.drag)
-  const siderDragging = useMobileSider((state) => state.dragging)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   // 启动检查更新：发现更高版本时弹窗，可更新 / 稍后 / 跳过此版本
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
@@ -231,6 +233,12 @@ export const App = () => {
       if (blocked || event.touches.length !== 1) {
         return
       }
+      // 弹层（设置等）打开时绝不拖抽屉。有些子元素会 stopPropagation 掉 touchstart，
+      // 导致上面那次判定被跳过，这里每次移动都兜一次底。
+      if (document.querySelector('[role="dialog"]')) {
+        blocked = true
+        return
+      }
       const touch = event.touches[0]
       const dx = touch.clientX - startX
       const dy = touch.clientY - startY
@@ -247,13 +255,16 @@ export const App = () => {
           return
         }
         dragging = true
+        // 只在这里切一次状态（挂上拖动标记），后续每帧都不进 React
+        beginSiderDrag()
       }
       // 判定为横滑后阻止浏览器接管，保证位移跟手
       if (event.cancelable) {
         event.preventDefault()
       }
       const offset = baseOpen ? SIDER_WIDTH + dx : dx
-      setSiderDrag(Math.min(SIDER_WIDTH, Math.max(0, offset)))
+      // 直接写 CSS 变量：不触发渲染，长上下文也不会掉帧
+      applySiderDrag(offset)
     }
 
     // 跟手拖到一半被系统取消（来电、切后台、输入法抢手势）时，按当前位移收口，
@@ -261,12 +272,12 @@ export const App = () => {
     const settleByOffset = () => {
       // 打开：offset 即向右拖动的距离；关闭：offset 是剩余拉出的宽度，
       // 换算成「朝动作方向拖动的距离」，开与关都用同一个 25% 阈值。
-      const offset = useMobileSider.getState().drag ?? 0
+      const offset = currentSiderOffset()
       const dragged = baseOpen ? SIDER_WIDTH - offset : offset
       const shouldOpen = baseOpen
         ? dragged < SIDER_WIDTH * SETTLE_RATIO
         : dragged >= SIDER_WIDTH * SETTLE_RATIO
-      settleSider(shouldOpen)
+      endSiderDrag(shouldOpen)
     }
 
     const onEnd = (event: TouchEvent) => {
@@ -537,14 +548,10 @@ export const App = () => {
       <div ref={frameRef} className={styles.frame}>
         {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
         <main
-          className={styles.main}
-          style={
-            isMobile && (siderOpen || siderDrag !== null)
-              ? {
-                  transform: `translateX(${siderOffset(siderOpen, siderDrag)}px)`,
-                  transition: siderDragging ? 'none' : undefined,
-                }
-              : undefined
+          className={
+            isMobile && (siderOpen || siderDragging || siderClosing)
+              ? `${styles.main} ${styles.mobileMain}`
+              : styles.main
           }
         >
           {saveError ? (

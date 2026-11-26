@@ -113,3 +113,84 @@ export const IconSettingDebug = () => (
     <path d="M5.6 4.4 2.2 8l3.4 3.6M10.4 4.4 13.8 8l-3.4 3.6" {...stroke} />
   </svg>
 )
+
+/** 模型配置：两条带旋钮的滑杆 */
+export const IconSettingSliders = () => (
+  <svg {...base}>
+    <path d="M2.2 5.2h3.2M9.6 5.2h4.2M2.2 10.8h6.2M12.6 10.8h1.2" {...stroke} />
+    <circle cx="7.5" cy="5.2" r="1.6" {...stroke} />
+    <circle cx="11.3" cy="10.8" r="1.6" {...stroke} />
+  </svg>
+)
+
+/** 界面设置：明暗对比的圆 */
+export const IconSettingPalette = () => (
+  <svg {...base}>
+    <circle cx="8" cy="8" r="5.4" {...stroke} />
+    <path d="M8 2.6a5.4 5.4 0 0 1 0 10.8Z" fill="currentColor" />
+  </svg>
+)
+
+/** 用户信息：人像 */
+export const IconSettingPerson = () => (
+  <svg {...base}>
+    <circle cx="8" cy="5.2" r="2.7" {...stroke} />
+    <path d="M2.9 13.6a5.3 5.3 0 0 1 10.2 0" {...stroke} />
+  </svg>
+)
+
+/** 显示来源：身份卡 */
+export const IconSettingIdentityCard = () => (
+  <svg {...base}>
+    <rect x="1.6" y="3.2" width="12.8" height="9.6" rx="1.8" {...stroke} />
+    <circle cx="5.7" cy="7.2" r="1.4" {...stroke} />
+    <path d="M3.7 11c.4-1.1 1.2-1.7 2-1.7s1.6.6 2 1.7" {...stroke} />
+    <path d="M10 6.6h2.6M10 9.4h2.6" {...stroke} />
+  </svg>
+)
+
+/** 接口设置：从一个点分出两条路 */
+export const IconSettingPlug = () => (
+  <svg {...base}>
+    <path d="M8 13.6V8.2" {...stroke} />
+    <path d="M8 8.2 4.2 4.4M8 8.2l3.8-3.8" {...stroke} />
+    <circle cx="3.4" cy="3.6" r="1.5" {...stroke} />
+    <circle cx="12.6" cy="3.6" r="1.5" {...stroke} />
+  </svg>
+)
+
+/** 中继服务器：机柜 */
+export const IconSettingServer = () => (
+  <svg {...base}>
+    <rect x="2" y="2.2" width="12" height="4.8" rx="1.4" {...stroke} />
+    <rect x="2" y="9" width="12" height="4.8" rx="1.4" {...stroke} />
+    <circle cx="4.8" cy="4.6" r="0.75" fill="currentColor" />
+    <circle cx="4.8" cy="11.4" r="0.75" fill="currentColor" />
+    <path d="M7.4 4.6h3.6M7.4 11.4h3.6" {...stroke} />
+  </svg>
+)
+
+/** 压缩图片：相框里向下压 */
+export const IconSettingCompress = () => (
+  <svg {...base}>
+    <rect x="1.9" y="1.9" width="12.2" height="12.2" rx="2.2" {...stroke} />
+    <path d="M8 4.6v4.4" {...stroke} />
+    <path d="m6.1 7.1 1.9 1.9 1.9-1.9" {...stroke} />
+  </svg>
+)
+
+/** 聊天图片压缩：两张叠起来的图片 */
+export const IconSettingImages = () => (
+  <svg {...base}>
+    <rect x="1.8" y="4.4" width="8.4" height="9.4" rx="1.6" {...stroke} />
+    <path d="M4.6 1.9h7.9a1.7 1.7 0 0 1 1.7 1.7v7.9" {...stroke} />
+  </svg>
+)
+
+/** 始终同步：循环箭头 */
+export const IconSettingSync = () => (
+  <svg {...base}>
+    <path d="M13.3 8a5.3 5.3 0 1 1-1.6-3.8" {...stroke} />
+    <path d="M13.5 2.6v3.6H9.9" {...stroke} />
+  </svg>
+)

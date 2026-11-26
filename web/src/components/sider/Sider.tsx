@@ -20,7 +20,7 @@ import { IconButton } from '../base/IconButton.js'
 import { Modal } from '../base/Modal.js'
 import { showToast } from '../base/toastState.js'
 import { openSettings } from '../settings/settingsDialogState.js'
-import { closeMobileSider, siderOffset, SIDER_WIDTH, useMobileSider } from './mobileSiderState.js'
+import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
 import { setKeyboardResize } from '../../services/keyboard.js'
 import {
   clearSiderReveal,
@@ -641,26 +641,15 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
  */
 export const MobileSider = () => {
   const open = useMobileSider((state) => state.open)
-  const drag = useMobileSider((state) => state.drag)
-  const dragging = useMobileSider((state) => state.dragging)
-  const visible = open || drag !== null
-  // 与主界面共用同一个位移：抽屉右边缘始终贴着主界面左边缘
-  const offset = siderOffset(open, drag)
+  const visible = open
+  // 位移由 `--sider-offset` 驱动，与主界面共用一个变量
   return (
     <>
       <div
         className={clsx(styles.drawerMask, !visible && styles.drawerHidden)}
         onClick={visible ? closeMobileSider : undefined}
       />
-      <div
-        className={clsx(styles.drawer, !visible && styles.drawerHidden)}
-        aria-hidden={!visible}
-        style={{
-          transform: `translateX(${offset - SIDER_WIDTH}px)`,
-          // 只有手指拖动中才关过渡；松手后的开合仍要动画
-          transition: dragging ? 'none' : undefined,
-        }}
-      >
+      <div className={clsx(styles.drawer, !visible && styles.drawerHidden)} aria-hidden={!visible}>
         <Sider mobile open={visible} />
       </div>
     </>

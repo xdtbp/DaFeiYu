@@ -202,6 +202,9 @@
   flex: 1;
   min-height: 0;
   margin-top: 24px;
+  /* 下拉时列表整体下移，多出来的部分要在这里裁掉，
+     否则会盖到底部的账户区（看起来像账户也在跟着动） */
+  overflow: hidden;
 }
 
 .list {
@@ -428,7 +431,12 @@
   left: 0;
   z-index: 800;
   touch-action: pan-y;
+  transform: translateX(calc(var(--sider-offset, 0px) - 300px));
   transition: transform 0.24s var(--ds-ease-in-out);
+}
+
+:global(html[data-sider-dragging]) .drawer {
+  transition: none;
 }
 
 /* 收起后抽屉仍在 DOM 里（保留滚动位置），只是移到屏幕外，不能再接点击 */

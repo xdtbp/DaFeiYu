@@ -52,18 +52,28 @@ import { ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { BalanceCard } from './BalanceCard.js'
 import { useLocalProfile, readAvatar } from '../../services/localProfile.js'
 import { RelayEditPage, RelayListPage, RoutesPage, SubPage } from './RelayPages.js'
+import { ChatImageCompressPage, ImageCompressPage } from './CompressPages.js'
+import { useImageCompress } from '../../services/imageCompress.js'
 import { useRelay } from '../../services/relay.js'
 import {
   IconSettingBolt,
-  IconSettingDebug,
+  IconSettingCompress,
   IconSettingFont,
   IconSettingGlobe,
+  IconSettingIdentityCard,
+  IconSettingImages,
   IconSettingInfo,
   IconSettingLength,
   IconSettingLocation,
   IconSettingModel,
   IconSettingMoon,
+  IconSettingPalette,
+  IconSettingPerson,
+  IconSettingPlug,
+  IconSettingServer,
+  IconSettingSliders,
   IconSettingSpeaker,
+  IconSettingSync,
   IconSettingThinking,
   IconSettingWallet,
 } from './settingsIcons.js'
@@ -229,6 +239,8 @@ const SettingsContent = () => {
               <HistoryProgress kind="import" />
               <ExportHistory disabled={historyBusy} />
               <HistoryProgress kind="export" />
+              <CompressSetting onOpen={() => pushSettingsPage({ key: 'image-compress' })} />
+              <ChatCompressSetting onOpen={() => pushSettingsPage({ key: 'chat-compress' })} />
               <RelaySetting onOpen={() => pushSettingsPage({ key: 'relay' })} />
               <AlwaysSyncSetting />
               <SettingCell
@@ -284,6 +296,32 @@ const SettingsContent = () => {
                   <LocaleSetting />
                   <ThinkingDisplaySetting />
                   <TtsVoiceSetting />
+                </SubPage>
+              )
+            }
+            if (page.key === 'image-compress') {
+              return (
+                <SubPage
+                  key="image-compress"
+                  title={t('settingsImageCompress')}
+                  onBack={popSettingsPage}
+                  closing={closing}
+                  zIndex={zIndex}
+                >
+                  <ImageCompressPage />
+                </SubPage>
+              )
+            }
+            if (page.key === 'chat-compress') {
+              return (
+                <SubPage
+                  key="chat-compress"
+                  title={t('settingsChatCompress')}
+                  onBack={popSettingsPage}
+                  closing={closing}
+                  zIndex={zIndex}
+                >
+                  <ChatImageCompressPage />
                 </SubPage>
               )
             }
@@ -947,7 +985,7 @@ const ModelConfigSetting = ({ onOpen }: { onOpen: () => void }) => {
   const t = useTranslate()
   return (
     <SettingCell
-      icon={<IconSettingThinking />}
+      icon={<IconSettingSliders />}
       label={t('settingsModelConfig')}
       status={null}
       description={t('settingsModelConfigDesc')}
@@ -962,7 +1000,7 @@ const InterfaceSetting = ({ onOpen }: { onOpen: () => void }) => {
   const t = useTranslate()
   return (
     <SettingCell
-      icon={<IconSettingFont />}
+      icon={<IconSettingPalette />}
       label={t('settingsInterface')}
       status={null}
       description={t('settingsInterfaceDesc')}
@@ -987,7 +1025,7 @@ const ProfileSetting = ({ onOpen }: { onOpen: () => void }) => {
         : t('relayTargetAccount')
   return (
     <SettingCell
-      icon={<IconSettingInfo />}
+      icon={<IconSettingPerson />}
       label={t('relayIdentityTitle')}
       status={null}
       description={label}
@@ -1008,7 +1046,7 @@ const ProfileSourceSetting = () => {
 
   return (
     <SettingCell
-      icon={<IconSettingInfo />}
+      icon={<IconSettingIdentityCard />}
       label={t('profileSource')}
       status={null}
       description={t('profileSourceDesc')}
@@ -1103,7 +1141,7 @@ const RoutesSetting = ({ onOpen }: { onOpen: () => void }) => {
   const t = useTranslate()
   return (
     <SettingCell
-      icon={<IconSettingModel />}
+      icon={<IconSettingPlug />}
       label={t('relayRoutesTitle')}
       status={null}
       description={t('relayRoutesDesc')}
@@ -1123,10 +1161,49 @@ const RelaySetting = ({ onOpen }: { onOpen: () => void }) => {
       : servers.map((server) => server.name || server.url).join('、')
   return (
     <SettingCell
-      icon={<IconSettingGlobe />}
+      icon={<IconSettingServer />}
       label={t('relaySectionTitle')}
       status={null}
       description={description}
+      action={<SubPageLink />}
+      onClick={onOpen}
+    />
+  )
+}
+
+/** 数据管理 → 压缩图片 */
+const CompressSetting = ({ onOpen }: { onOpen: () => void }) => {
+  const t = useTranslate()
+  const mode = useImageCompress((state) => state.mode)
+  const label =
+    mode === 'lossless'
+      ? t('compressLossless')
+      : mode === 'extreme'
+        ? t('compressExtreme')
+        : mode === 'custom'
+          ? t('compressCustom')
+          : t('compressBalanced')
+  return (
+    <SettingCell
+      icon={<IconSettingCompress />}
+      label={t('settingsImageCompress')}
+      status={null}
+      description={`${t('settingsImageCompressDesc')} · ${label}`}
+      action={<SubPageLink />}
+      onClick={onOpen}
+    />
+  )
+}
+
+/** 数据管理 → 聊天图片压缩 */
+const ChatCompressSetting = ({ onOpen }: { onOpen: () => void }) => {
+  const t = useTranslate()
+  return (
+    <SettingCell
+      icon={<IconSettingImages />}
+      label={t('settingsChatCompress')}
+      status={null}
+      description={t('settingsChatCompressDesc')}
       action={<SubPageLink />}
       onClick={onOpen}
     />
@@ -1140,7 +1217,7 @@ const AlwaysSyncSetting = () => {
   const setAlwaysSync = useRelay((state) => state.setAlwaysSync)
   return (
     <SettingCell
-      icon={<IconSettingDebug />}
+      icon={<IconSettingSync />}
       label={t('relaySyncAlways')}
       status={null}
       description={t('relaySyncAlwaysDesc')}

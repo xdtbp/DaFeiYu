@@ -9,6 +9,8 @@ const DB_VERSION = 11
 export type StoredFile = {
   id: string
   blob: Blob
+  /** 压缩过的时间戳；有值说明这张图已经被压过，批量压缩可以跳过 */
+  compressedAt?: number
 }
 
 /** 文件引用留在摘要中，删除会话时通过索引判断原件是否仍被引用。 */
@@ -159,6 +161,21 @@ export const saveFiles = (files: StoredFile[]): Promise<void> => putFiles('files
 
 export const loadFile = async (id: string): Promise<Blob | undefined> =>
   (await (await getDB()).get('files', id))?.blob
+
+/** 列出全部本地原件，供「聊天图片压缩」批量处理 */
+export const listFiles = async (): Promise<StoredFile[]> =>
+  (await (await getDB()).getAll('files')) ?? []
+
+/** 替换某个原件的二进制内容（压缩后写回，id 不变，并打上「已压缩」标记） */
+export const replaceFileBlob = async (id: string, blob: Blob, compressedAt = Date.now()): Promise<void> => {
+  const tx = (await getDB()).transaction('files', 'readwrite')
+  const store = tx.store
+  const current = await store.get(id)
+  if (current) {
+    await store.put({ ...current, blob, compressedAt })
+  }
+  await tx.done
+}
 
 /** 清空导入暂存：开始导入前清除上次中断（如关闭页面）遗留的数据，导入失败后清除本次写入。 */
 export const clearStaging = async (): Promise<void> => {

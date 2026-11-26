@@ -18,12 +18,14 @@ export type RelayServer = {
   name: string
   /** 形如 https://relay.example.com:8443，不带结尾斜杠 */
   url: string
-  username: string
-  /** 仅存本机，用于令牌过期后自动重新登录 */
-  password: string
-  token: string
-  tokenExpiresAt: number
-  /** 中继返回的账号名，用于「用户信息」来源 */
+  /** 在 WebUI「账号令牌」里创建的密钥（shr_...），客户端只保存这一份 */
+  key: string
+  /** 老版本字段：v1 用账号密码换来的令牌，迁移时并入 key */
+  token?: string
+  username?: string
+  password?: string
+  tokenExpiresAt?: number
+  /** 中继侧账号名（v2 不再登录，通常为空） */
   userName: string
   lastStatus: 'unknown' | 'ok' | 'error'
   lastError: string
@@ -68,7 +70,12 @@ const load = (): Persisted => {
       }
     }
     return {
-      servers: Array.isArray(parsed.servers) ? (parsed.servers as RelayServer[]) : [],
+      servers: Array.isArray(parsed.servers)
+        ? (parsed.servers as RelayServer[]).map((server) => ({
+            ...server,
+            key: server.key || server.token || '',
+          }))
+        : [],
       routes,
       alwaysSync: parsed.alwaysSync === true,
       identitySource:
@@ -215,59 +222,32 @@ export const fetchRelayInfo = async (url: string) => {
   return (await response.json()) as { name?: string; version?: string; authRequired?: boolean }
 }
 
-/** 用户名 + 密码换令牌 */
-export const loginRelay = async (url: string, username: string, password: string, device = 'android') => {
-  const base = normalizeUrl(url)
-  const response = await withTimeout(`${base}/api/v1/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password, device }),
-  })
-  const data = (await response.json().catch(() => ({}))) as {
-    token?: string
-    expiresAt?: number
-    user?: { username?: string }
-    error?: string
-  }
-  if (!response.ok || !data.token) {
-    throw new Error(data.error || `HTTP ${response.status}`)
-  }
-  return {
-    token: data.token,
-    tokenExpiresAt: data.expiresAt ?? Date.now() + 30 * 86400_000,
-    userName: data.user?.username ?? username,
-  }
-}
+export const relayKey = (server: RelayServer): string => (server.key || server.token || '').trim()
 
-/** 令牌快过期就重登一次；失败时把错误挂到服务器状态上 */
+/** 客户端只用密钥：没有登录、没有刷新，密钥就是凭据 */
 export const ensureRelayToken = async (server: RelayServer): Promise<RelayServer> => {
-  if (server.token && server.tokenExpiresAt - Date.now() > 60_000) {
-    return server
+  if (!relayKey(server)) {
+    throw new Error('请先填写中继密钥')
   }
-  if (!server.username || !server.password) {
-    throw new Error('中继未保存账号密码')
-  }
-  const result = await loginRelay(server.url, server.username, server.password)
-  const next = { ...server, ...result }
-  useRelay.getState().patchServer(server.id, result)
-  return next
+  return server
 }
 
 /** 测试连接：先拿公开信息，再用账号登录并读一次同步状态 */
 export const testRelay = async (server: RelayServer): Promise<{ ok: boolean; message: string }> => {
   try {
     const info = await fetchRelayInfo(server.url)
-    const login = await loginRelay(server.url, server.username, server.password)
     const response = await withTimeout(`${normalizeUrl(server.url)}/api/v1/sync/state`, {
       method: 'GET',
-      headers: { 'x-relay-token': login.token },
+      headers: { 'x-relay-token': relayKey(server) },
     })
     if (!response.ok) {
       throw new Error(`同步接口 HTTP ${response.status}`)
     }
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('密钥无效或已被吊销')
+    }
     const state = (await response.json()) as { sessions?: number }
     useRelay.getState().patchServer(server.id, {
-      ...login,
       lastStatus: 'ok',
       lastError: '',
       lastCheckedAt: Date.now(),
@@ -277,7 +257,12 @@ export const testRelay = async (server: RelayServer): Promise<{ ok: boolean; mes
       message: `连接成功 · ${info.name ?? '中继'} v${info.version ?? '?'} · ${state.sessions ?? 0} 个会话`,
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const raw = error instanceof Error ? error.message : String(error)
+    // 浏览器的网络失败是不带原因的 “Failed to fetch”，这里补一句排查方向
+    const message =
+      raw === 'Failed to fetch'
+        ? '连不上中继：检查地址/端口是否可达，服务端 RELAY_ALLOWED_ORIGINS 是否允许 appassets 来源'
+        : raw
     useRelay.getState().patchServer(server.id, {
       lastStatus: 'error',
       lastError: message,
@@ -287,22 +272,18 @@ export const testRelay = async (server: RelayServer): Promise<{ ok: boolean; mes
   }
 }
 
-/** 带中继令牌的请求；401 时自动重登一次再试 */
+/** 带中继密钥的请求；密钥无效时直接抛错，交给上层提示 */
 export const relayFetch = async (
   server: RelayServer,
   path: string,
   init: RequestInit = {}
 ): Promise<Response> => {
-  let current = await ensureRelayToken(server)
-  const send = (token: string) =>
-    fetch(`${normalizeUrl(current.url)}${path}`, {
-      ...init,
-      headers: { ...(init.headers as Record<string, string> | undefined), 'x-relay-token': token },
-    })
-  let response = await send(current.token)
-  if (response.status === 401) {
-    current = await ensureRelayToken({ ...current, token: '' })
-    response = await send(current.token)
+  const key = relayKey(server)
+  if (!key) {
+    throw new Error('请先填写中继密钥')
   }
-  return response
+  return fetch(`${normalizeUrl(server.url)}${path}`, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string> | undefined), 'x-relay-token': key },
+  })
 }

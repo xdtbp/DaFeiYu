@@ -47,6 +47,9 @@
 
   > * {
     animation: messageIn 0.32s var(--ds-ease-in-out) both;
+    /* 长对话减速核心：屏幕外的消息跳过布局与绘制，滚动时再补 */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 160px;
   }
 }
 

@@ -5,13 +5,16 @@ import { useTranslate } from '../../i18n/index.js'
 import {
   findServer,
   normalizeUrl,
+  relayKey,
   testRelay,
   useRelay,
   type ApiKind,
   type RelayServer,
   type RouteChoice,
 } from '../../services/relay.js'
+import { IconChevronRightOutline14 } from '../base/icons.js'
 import { Select } from '../base/Select.js'
+import { Hint } from '../base/Hint.js'
 import { useAccount } from '../../services/account.js'
 import { useSettings } from '../../services/settings.js'
 import { showToast } from '../base/toastState.js'
@@ -48,7 +51,7 @@ export const SubPage = ({
           aria-label={t('relayBack')}
         >
           <span className={styles.subPageBackIcon} aria-hidden>
-            ‹
+            <IconChevronRightOutline14 />
           </span>
           <span>{t('relayBack')}</span>
         </button>
@@ -57,43 +60,6 @@ export const SubPage = ({
       </div>
       <div className={styles.subPageBody}>{children}</div>
     </div>
-  )
-}
-
-/** 问号 + 气泡：和花费估算那种提示一致，点一下出现，再点或点别处消失 */
-const Hint = ({ text }: { text: string }) => {
-  const [open, setOpen] = useState(false)
-  const wrapRef = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-    const onPointerDown = (event: PointerEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('pointerdown', onPointerDown, true)
-    return () => document.removeEventListener('pointerdown', onPointerDown, true)
-  }, [open])
-
-  return (
-    <span ref={wrapRef} className={styles.hintWrap}>
-      <button
-        type="button"
-        className={styles.hintButton}
-        aria-label={text}
-        onClick={() => setOpen((value) => !value)}
-      >
-        ?
-      </button>
-      {open ? (
-        <span role="tooltip" className={styles.hintBubble}>
-          {text}
-        </span>
-      ) : null}
-    </span>
   )
 }
 
@@ -222,8 +188,7 @@ export const RelayEditPage = ({
   const server = relayId ? findServer(relayId) : null
   const [name, setName] = useState(server?.name ?? '')
   const [url, setUrl] = useState(server?.url ?? '')
-  const [username, setUsername] = useState(server?.username ?? '')
-  const [password, setPassword] = useState(server?.password ?? '')
+  const [key, setKey] = useState(relayKey(server ?? ({ key: '' } as RelayServer)))
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   // 新增时先固定一个 id：保存与测试要写回同一条记录
@@ -233,10 +198,7 @@ export const RelayEditPage = ({
     id: idRef.current,
     name: name.trim() || normalizeUrl(url).replace(/^https?:\/\//, ''),
     url: normalizeUrl(url),
-    username: username.trim(),
-    password,
-    token: server?.token ?? '',
-    tokenExpiresAt: server?.tokenExpiresAt ?? 0,
+    key: key.trim(),
     userName: server?.userName ?? '',
     lastStatus: 'unknown',
     lastError: '',
@@ -245,7 +207,7 @@ export const RelayEditPage = ({
 
   const onTest = async () => {
     const target = draft()
-    if (!target.url || !target.username || !target.password) {
+    if (!target.url || !target.key) {
       setStatus(t('relayFillAll'))
       return
     }
@@ -258,7 +220,7 @@ export const RelayEditPage = ({
 
   const onSave = async () => {
     const target = draft()
-    if (!target.url || !target.username || !target.password) {
+    if (!target.url || !target.key) {
       setStatus(t('relayFillAll'))
       return
     }
@@ -308,20 +270,14 @@ export const RelayEditPage = ({
           />
         </label>
         <label className={styles.relayField}>
-          <span>{t('relayUsername')}</span>
+          <span>{t('relayKey')}</span>
           <input
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            autoComplete="username"
-          />
-        </label>
-        <label className={styles.relayField}>
-          <span>{t('relayPassword')}</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
+            value={key}
+            onChange={(event) => setKey(event.target.value)}
+            placeholder="shr_..."
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </label>
         <div className={styles.relayFormActions}>
@@ -330,7 +286,7 @@ export const RelayEditPage = ({
           </button>
         </div>
         {status ? <div className={styles.description}>{status}</div> : null}
-        <div className={styles.description}>{t('relayPasswordHint')}</div>
+        <div className={styles.description}>{t('relayKeyHint')}</div>
       </div>
     </SubPage>
   )

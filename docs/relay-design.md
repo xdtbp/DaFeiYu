@@ -1,6 +1,6 @@
 # 中继服务与多端同步：设计与落地计划
 
-> 状态：服务端 MVP 已完成（`relay/`），客户端接入待实施。
+> 状态：服务端 MVP 已完成并已从客户端仓库分出，独立打包在 `D:/DL/serve.zip`（解压后为 `serve/`）；客户端接入已实施。
 > 参考项目：`dsh-ee`（见文末「参考项目分析」）。
 
 ## 1. 目标
@@ -32,7 +32,7 @@ Android 客户端 ──┐
 
 ## 3. 服务端 MVP（已完成）
 
-`relay/`，Node 22，零第三方依赖：
+服务端独立仓库（`serve.zip`，解压后 `serve/`），Node 22，零第三方依赖：
 
 - `src/store.mjs`：SQLite（WAL），users / tokens / settings / sessions / changes 五张表；
 - `src/server.mjs`：HTTP(S) 服务、鉴权、API 转发（含 SSE 透传）、同步接口；
