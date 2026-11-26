@@ -10,6 +10,8 @@ import {
 } from '../../services/account.js'
 import { useApiBalance } from '../../services/apiBalance.js'
 import { useSettings } from '../../services/settings.js'
+import { useRelay } from '../../services/relay.js'
+import { useLocalProfile } from '../../services/localProfile.js'
 import styles from './Sider.module.css'
 
 /**
@@ -23,6 +25,21 @@ export const AccountFooter = () => {
   const t = useTranslate()
   const { status, name, avatar, balance, bonus, message, refreshing } = useAccount()
   const apiKey = useSettings((state) => state.apiKey)
+  // 「用户信息」里选了中继时，头像与昵称取中继那边的账号
+  const identitySource = useRelay((state) => state.identitySource)
+  const relayServer = useRelay((state) =>
+    state.servers.find((server) => server.id === state.identityRelayId)
+  )
+  const localNickname = useLocalProfile((state) => state.nickname)
+  const localAvatar = useLocalProfile((state) => state.avatar)
+  const relayIdentity = identitySource === 'relay' ? relayServer : null
+  const localIdentity = identitySource === 'local'
+  const displayName = relayIdentity
+    ? `${relayIdentity.name}${relayIdentity.userName ? ` · ${relayIdentity.userName}` : ''}`
+    : localIdentity
+      ? localNickname || t('profileLocalDefault')
+      : name || t('accountUnnamed')
+  const displayAvatar = localIdentity ? localAvatar : relayIdentity ? '' : avatar
   const apiBalance = useApiBalance()
 
   // API Key 变化后重新查询 API 余额
@@ -61,16 +78,16 @@ export const AccountFooter = () => {
           title={t('accountTapToRefresh')}
         >
           <span className={styles.avatar}>
-            {avatar ? (
-              <img src={avatar} alt="" className={styles.avatarImage} />
+            {displayAvatar ? (
+              <img src={displayAvatar} alt="" className={styles.avatarImage} />
             ) : (
               <span className={styles.avatarFallback}>
-                {(name || 'D').slice(0, 1).toUpperCase()}
+                {(displayName || 'D').slice(0, 1).toUpperCase()}
               </span>
             )}
           </span>
           <span className={styles.accountText}>
-            <span className={styles.accountName}>{name || t('accountUnnamed')}</span>
+            <span className={styles.accountName}>{displayName}</span>
             {hasKey ? (
               <span className={styles.accountBalances}>
                 <span className={styles.accountMeta}>

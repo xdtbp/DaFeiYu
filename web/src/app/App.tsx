@@ -23,6 +23,7 @@ import {
   closeAbout,
   closeSettings,
   ensureApiKey,
+  popSettingsPage,
   useSettingsDialog,
 } from '../components/settings/settingsDialogState.js'
 import { DisclaimerGate, isDisclaimerAccepted } from '../components/onboarding/DisclaimerGate.js'
@@ -34,6 +35,7 @@ import { startBalanceRefresh } from '../services/balanceRefresh.js'
 import { Toast } from '../components/base/Toast.js'
 import { showToast } from '../components/base/toastState.js'
 import { onUploadNotice } from '../services/attachments.js'
+import { log, logError } from '../services/log.js'
 import { Button } from '../components/base/Button.js'
 import { stopReadAloud } from '../services/speech/readAloud.js'
 import { CollapsedSider } from '../components/sider/CollapsedSider.js'
@@ -48,6 +50,9 @@ import {
   useMobileSider,
 } from '../components/sider/mobileSiderState.js'
 import { MobileSider, Sider } from '../components/sider/Sider.js'
+import { Modal } from '../components/base/Modal.js'
+import { useRelay, type RelayServer } from '../services/relay.js'
+import { hasRemoteChanges, syncAllRelays, syncWithRelay } from '../services/relaySync.js'
 import styles from './App.module.css'
 
 export const App = () => {
@@ -66,6 +71,8 @@ export const App = () => {
   // 移动端侧边栏以独立抽屉管理开合状态
   const siderCollapsed = useSettings((state) => state.siderCollapsed) && !isMobile
   const ready = useChatStore((state) => state.ready)
+  /** 启动时发现中继有更新的会话：询问是否同步（与更新弹窗互斥，先更新后同步） */
+  const [syncAsk, setSyncAsk] = useState<RelayServer | null>(null)
   const initError = useChatStore((state) => state.initError)
   const saveError = useChatStore((state) => Object.values(state.sessionSaveErrors).some(Boolean))
   const importingHistory = useChatStore((state) => state.importingHistory)
@@ -338,6 +345,48 @@ export const App = () => {
     setupAccount()
   }, [])
 
+  // 启动同步：开了「始终同步」就静默拉取，否则先问一句
+  useEffect(() => {
+    if (!ready || !disclaimerAccepted) {
+      return
+    }
+    const servers = useRelay.getState().servers
+    if (servers.length === 0) {
+      return
+    }
+    if (useRelay.getState().alwaysSync) {
+      void syncAllRelays().then((results) => {
+        const pulled = results.reduce((sum, item) => sum + item.pulled, 0)
+        if (pulled > 0) {
+          showToast({ key: 'relaySynced', params: { pulled: String(pulled), pushed: '0' } })
+        }
+      })
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      for (const server of servers) {
+        if (cancelled) {
+          return
+        }
+        if (await hasRemoteChanges(server)) {
+          if (!cancelled) {
+            setSyncAsk(server)
+          }
+          return
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [ready, disclaimerAccepted])
+
+  // 布局与偏好变化记一笔：排障时能对上是手机还是宽屏、什么语言和字号
+  useEffect(() => {
+    log.info('ui', '布局/偏好', { isMobile, locale, fontScale })
+  }, [isMobile, locale, fontScale])
+
   // 余额：启动刷新一次，之后每分钟刷新一次（页面在后台时跳过）
   useEffect(() => startBalanceRefresh(), [])
 
@@ -351,12 +400,14 @@ export const App = () => {
     void (async () => {
       try {
         const info = await checkUpdate()
+        log.info('update', '检查更新完成', { upToDate: info.upToDate, version: info.version })
         if (cancelled || info.upToDate || skippedVersion() === info.version) {
           return
         }
         setUpdateInfo(info)
-      } catch {
-        // 检查失败保持静默，不打扰启动流程
+      } catch (error) {
+        // 检查失败保持静默，不打扰启动流程，但日志里要留痕
+        logError('update', '检查更新失败', error)
       }
     })()
     return () => {
@@ -445,18 +496,28 @@ export const App = () => {
       }
       // 「关于软件」叠在设置之上，先关它再关设置
       if (useSettingsDialog.getState().aboutOpen) {
+        log.info('ui', '返回键：关闭关于')
         closeAbout()
         return true
       }
       if (useSettingsDialog.getState().open) {
+        // 二级页面还在时，返回先退一层，最后才关设置
+        if (useSettingsDialog.getState().pages.length > 0) {
+          log.info('ui', '返回键：退出设置二级页面')
+          popSettingsPage()
+          return true
+        }
+        log.info('ui', '返回键：关闭设置')
         closeSettings()
         return true
       }
       if (useMobileSider.getState().open) {
+        log.info('ui', '返回键：关闭侧边栏')
         closeMobileSider()
         return true
       }
       if (useSearchPanel.getState().entry) {
+        log.info('ui', '返回键：关闭搜索面板')
         closeSearchPanel()
         return true
       }
@@ -563,6 +624,45 @@ export const App = () => {
             setUpdateInfo(null)
           }}
         />
+      ) : null}
+      {syncAsk && !updateInfo ? (
+        <Modal
+          title={t('relaySyncAskTitle')}
+          closable
+          onClose={() => setSyncAsk(null)}
+          footer={
+            <>
+              <Button variant="outlined" size="m" onClick={() => setSyncAsk(null)}>
+                {t('relaySyncLater')}
+              </Button>
+              <Button
+                size="m"
+                onClick={() => {
+                  const server = syncAsk
+                  setSyncAsk(null)
+                  void syncWithRelay(server.id)
+                    .then((result) =>
+                      showToast({
+                        key: 'relaySynced',
+                        params: { pulled: String(result.pulled), pushed: String(result.pushed) },
+                      })
+                    )
+                    .catch((error: unknown) =>
+                      showToast({
+                        key: 'relaySyncFailed',
+                        params: { message: error instanceof Error ? error.message : String(error) },
+                        type: 'error',
+                      })
+                    )
+                }}
+              >
+                {t('relaySyncNow')}
+              </Button>
+            </>
+          }
+        >
+          <p>{t('relaySyncAskBody', { name: syncAsk.name })}</p>
+        </Modal>
       ) : null}
       {previewImage ? (
         <div

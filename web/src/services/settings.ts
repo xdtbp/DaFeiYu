@@ -38,6 +38,8 @@ type Settings = {
   authRoute: AuthRoute
   /** 官方模型选择 */
   model: ChatModelId
+  /** 对话走哪台中继；null 表示走账号 / API Key */
+  chatRelayId: string | null
   siderCollapsed: boolean
   /** 思考过程展示方式 */
   thinkingDisplay: ThinkingDisplay
@@ -58,6 +60,7 @@ const KEYS = {
   legacyCollapseThinking: 'chat-demo:collapse-thinking',
   authRoute: 'chat-demo:auth-route',
   model: 'chat-demo:model',
+  chatRelay: 'chat-demo:chat-relay',
   siderCollapsed: 'chat-demo:sider-collapsed',
   thinkingDisplay: 'chat-demo:thinking-display',
 } as const
@@ -170,6 +173,7 @@ export const useSettings = create<Settings>(() => ({
   fontScale: initialFontScale(),
   authRoute: read(KEYS.authRoute) === 'apikey' ? 'apikey' : 'account',
   model: read(KEYS.model) === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash',
+  chatRelayId: read(KEYS.chatRelay) || null,
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
   thinkingDisplay: initialThinkingDisplay(),
 }))
@@ -233,6 +237,12 @@ export const setAuthRoute = (authRoute: AuthRoute) => {
 export const setModel = (model: ChatModelId) => {
   write(KEYS.model, model)
   useSettings.setState({ model })
+}
+
+/** 对话走某台中继（null 表示回到账号 / API Key） */
+export const setChatRelay = (chatRelayId: string | null) => {
+  write(KEYS.chatRelay, chatRelayId)
+  useSettings.setState({ chatRelayId })
 }
 
 export const setSiderCollapsed = (siderCollapsed: boolean) => {

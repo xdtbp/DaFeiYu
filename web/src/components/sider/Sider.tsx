@@ -11,6 +11,9 @@ import { groupSessions } from '../../services/chat/sessionGroups.js'
 import { pinSessions, unpinSessions, usePinnedSessions } from '../../services/chat/pins.js'
 import { removeSession, selectSession, useChatStore } from '../../services/chat/store.js'
 import { searchHistory, type SearchMatch } from '../../services/chat/search.js'
+import { syncAllRelays } from '../../services/relaySync.js'
+import { useRelay } from '../../services/relay.js'
+import { haptic } from '../../services/haptics.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { Button } from '../base/Button.js'
 import { IconButton } from '../base/IconButton.js'
@@ -42,6 +45,9 @@ type SiderGroup = {
 }
 
 /** 展开的侧边栏：名称与收起按钮、搜索历史、开启新对话、按时间分组的会话列表、底部设置；移动端放在抽屉里 */
+/** 下拉刷新阈值与阻尼：手指走 1px，指示器走 0.5px */
+const PULL_THRESHOLD = 64
+
 export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?: boolean }) => {
   const t = useTranslate()
   const sessions = useChatStore((state) => state.sessions)
@@ -88,6 +94,9 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
   const [visibleCount, setVisibleCount] = useState(SIDER_PAGE_SIZE)
   // 待定位的会话：搜索命中后滚到视野中间
   const [pendingReveal, setPendingReveal] = useState<string | null>(null)
+  /** 下拉指示器：直接改它的 style，不走 React 渲染，保证跟手 */
+  const indicatorRef = useRef<HTMLDivElement>(null)
+  const refreshingRef = useRef(false)
   const listRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -245,6 +254,137 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
     }
   }, [open, mobile])
 
+  /**
+   * 下拉刷新：自己接管触摸事件（touchmove 用非 passive 监听，才能 preventDefault），
+   * 实时改 transform 保证跟手；到阈值震一下；松手过阈值就留在顶部转圈。
+   */
+  useEffect(() => {
+    const list = listRef.current
+    const indicator = indicatorRef.current
+    if (!list || !indicator) {
+      return
+    }
+    const ease = 'cubic-bezier(.2,.8,.2,1)'
+    let startY: number | null = null
+    let distance = 0
+    let armed = false
+    let dragging = false
+
+    const paint = (value: number, animate: boolean) => {
+      indicator.style.transition = animate ? `transform .3s ${ease}, opacity .2s linear` : 'none'
+      list.style.transition = animate ? `transform .3s ${ease}` : 'none'
+      // 圆圈停在让位空隙的中间
+      indicator.style.transform = `translateY(${value / 2 - 18}px)`
+      indicator.style.opacity = value > 2 ? '1' : '0'
+      indicator.style.setProperty('--p', Math.min(1, value / PULL_THRESHOLD).toFixed(3))
+      // 列表一起下移，给指示器让位
+      list.style.transform = `translateY(${value}px)`
+    }
+
+    const reset = (animate: boolean) => {
+      distance = 0
+      armed = false
+      paint(0, animate)
+    }
+
+    const runRefresh = async () => {
+      if (refreshingRef.current || useRelay.getState().servers.length === 0) {
+        refreshingRef.current = false
+        indicator.dataset.spinning = 'false'
+        reset(true)
+        return
+      }
+      refreshingRef.current = true
+      indicator.dataset.spinning = 'true'
+      paint(PULL_THRESHOLD, true)
+      try {
+        const results = await syncAllRelays()
+        const pulled = results.reduce((sum, item) => sum + item.pulled, 0)
+        const pushed = results.reduce((sum, item) => sum + item.pushed, 0)
+        showToast({ key: 'relaySynced', params: { pulled: String(pulled), pushed: String(pushed) } })
+      } catch (error) {
+        showToast({
+          key: 'relaySyncFailed',
+          params: { message: error instanceof Error ? error.message : String(error) },
+          type: 'error',
+        })
+      } finally {
+        refreshingRef.current = false
+        indicator.dataset.spinning = 'false'
+        reset(true)
+      }
+    }
+
+    const onStart = (event: TouchEvent) => {
+      if (refreshingRef.current || list.scrollTop > 0 || event.touches.length !== 1) {
+        startY = null
+        return
+      }
+      startY = event.touches[0].clientY
+      distance = 0
+      armed = false
+      dragging = false
+    }
+
+    const onMove = (event: TouchEvent) => {
+      if (startY === null || refreshingRef.current || event.touches.length !== 1) {
+        return
+      }
+      const dy = event.touches[0].clientY - startY
+      if (dy <= 0) {
+        if (dragging) {
+          dragging = false
+          reset(true)
+        }
+        startY = null
+        return
+      }
+      if (list.scrollTop > 0) {
+        startY = null
+        return
+      }
+      // 手指移动超过 6px 才接管，避免影响轻点和横向滑动
+      if (!dragging && dy < 6) {
+        return
+      }
+      dragging = true
+      // 接管后阻止浏览器自己的滚动/回弹，动画完全由我们控制
+      event.preventDefault()
+      distance = Math.min(100, dy * 0.5)
+      paint(distance, false)
+      if (!armed && distance >= PULL_THRESHOLD) {
+        armed = true
+        haptic()
+      } else if (armed && distance < PULL_THRESHOLD - 4) {
+        armed = false
+      }
+    }
+
+    const onEnd = () => {
+      if (startY === null) {
+        return
+      }
+      startY = null
+      dragging = false
+      if (!armed) {
+        reset(true)
+        return
+      }
+      void runRefresh()
+    }
+
+    list.addEventListener('touchstart', onStart, { passive: true })
+    list.addEventListener('touchmove', onMove, { passive: false })
+    list.addEventListener('touchend', onEnd)
+    list.addEventListener('touchcancel', onEnd)
+    return () => {
+      list.removeEventListener('touchstart', onStart)
+      list.removeEventListener('touchmove', onMove)
+      list.removeEventListener('touchend', onEnd)
+      list.removeEventListener('touchcancel', onEnd)
+    }
+  }, [])
+
   // 点击列表里的某个会话：位置不用管，列表一直在，浏览器自然记得
   const handleSessionSelect = (sessionId: string) => {
     selectSession(sessionId)
@@ -327,6 +467,12 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
         </div>
       ) : null}
       <div className={styles.listWrap}>
+        <div ref={indicatorRef} className={styles.pullIndicator} aria-hidden>
+          <svg className={styles.pullRing} viewBox="0 0 36 36">
+            <circle className={styles.pullTrack} cx="18" cy="18" r="14" />
+            <circle className={styles.pullArc} cx="18" cy="18" r="14" />
+          </svg>
+        </div>
         {searchingMode ? (
           <div className={styles.searchResults}>
             {results.length === 0 ? (
@@ -357,7 +503,11 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
             )}
           </div>
         ) : (
-          <div className={styles.list} ref={listRef} onScroll={onListScroll}>
+          <div
+            className={styles.list}
+            ref={listRef}
+            onScroll={onListScroll}
+          >
             {limitedGroups.map((group) => (
               <div
                 key={group.key}

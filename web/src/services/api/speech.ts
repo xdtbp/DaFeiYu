@@ -1,4 +1,4 @@
-import { bearerAuthHeaders } from './auth.js'
+import { resolveAuth } from './auth.js'
 import { ApiError, API_ORIGIN, request } from './client.js'
 
 /**
@@ -7,7 +7,13 @@ import { ApiError, API_ORIGIN, request } from './client.js'
  * - TTS：POST /v1/tools/tts，返回音频字节流（产出首帧后即返回 200）
  * 鉴权都用 Authorization: Bearer。
  */
-const TOOLS_BASE_URL = `${API_ORIGIN}/v1/tools`
+const TOOLS_PATH = '/v1/tools'
+
+/** 语音服务单独一条分流，可以指到配了 ASR/TTS 的中继上 */
+const toolsBase = async (apiKey: string) => {
+  const auth = await resolveAuth('speech', apiKey, 'bearer')
+  return { base: `${auth.base ?? API_ORIGIN}${TOOLS_PATH}`, headers: auth.headers }
+}
 
 export type TtsVoice = 'stella' | 'tide'
 
@@ -22,9 +28,10 @@ export const transcribe = async (
 ): Promise<string> => {
   const form = new FormData()
   form.append('file', audio, 'recording.wav')
-  const response = await request(`${TOOLS_BASE_URL}/asr`, {
+  const { base, headers } = await toolsBase(apiKey)
+  const response = await request(`${base}/asr`, {
     method: 'POST',
-    headers: bearerAuthHeaders(apiKey),
+    headers,
     body: form,
     signal,
   })
@@ -53,9 +60,10 @@ export const synthesize = async (
   voice: TtsVoice,
   signal: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> => {
-  const response = await request(`${TOOLS_BASE_URL}/tts`, {
+  const { base, headers } = await toolsBase(apiKey)
+  const response = await request(`${base}/tts`, {
     method: 'POST',
-    headers: { ...bearerAuthHeaders(apiKey), 'Content-Type': 'application/json' },
+    headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voice_id: voice, format: 'pcm', filter_markdown: true }),
     signal,
   })

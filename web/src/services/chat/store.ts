@@ -6,6 +6,7 @@ import { beginStreamKeepAlive, endStreamKeepAlive } from '../power.js'
 import type { ChatModel, CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
+import { log, logError } from '../log.js'
 import { useSettings } from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
@@ -221,6 +222,57 @@ const persist = (sessionId: string) => {
   }
 }
 
+/**
+ * 中继同步入口：把远端较新的会话写进本地，并移除远端已删除的。
+ *
+ * 正在生成的会话跳过，避免流式写入把远端内容顶掉。
+ */
+export const applyRemoteSessions = async (
+  incoming: Session[],
+  removedIds: string[]
+): Promise<void> => {
+  if (get().importingHistory) {
+    return
+  }
+  const epoch = historyEpoch
+  for (const session of incoming) {
+    if (getStreamController(session.id)) {
+      continue
+    }
+    await db.saveSession(session)
+    if (epoch !== historyEpoch) {
+      return
+    }
+    const summary = toSessionSummary(session)
+    set((state) => {
+      const exists = state.sessions.some((item) => item.id === session.id)
+      const sessions = exists
+        ? state.sessions.map((item) => (item.id === session.id ? summary : item))
+        : [summary, ...state.sessions]
+      return {
+        sessions: sortSessions(sessions),
+        sessionCache: { ...state.sessionCache, [session.id]: session },
+      }
+    })
+  }
+  for (const id of removedIds) {
+    if (getStreamController(id)) {
+      continue
+    }
+    await db.deleteSession(id)
+    set((state) => {
+      const cache = { ...state.sessionCache }
+      Reflect.deleteProperty(cache, id)
+      return {
+        sessions: state.sessions.filter((item) => item.id !== id),
+        sessionCache: cache,
+        activeId: state.activeId === id ? null : state.activeId,
+      }
+    })
+  }
+  trimSessionCache()
+}
+
 export const retrySaveSessions = () => {
   if (!get().importingHistory) {
     unsavedSessions.forEach(persist)
@@ -301,14 +353,18 @@ export const initChat = (): Promise<void> => {
   const epoch = historyEpoch
   set({ initError: false })
   initTask = (async () => {
+    const started = Date.now()
+    log.info('chat', '读取本地会话列表')
     try {
       const summaries = await db.loadSessionSummaries()
       if (epoch === historyEpoch) {
         set({ ready: true, sessions: sortSessions(summaries) })
+        log.info('chat', '会话列表就绪', { count: summaries.length, ms: Date.now() - started })
       }
     } catch (error) {
       if (epoch === historyEpoch) {
         set({ initError: true })
+        logError('chat', '读取本地会话失败', error)
         db.reportStorageError('read local sessions')(error)
       }
     } finally {
@@ -445,6 +501,7 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
 
 export const newChat = () => {
   if (!get().importingHistory) {
+    log.info('chat', '新建对话')
     set({ activeId: null })
     trimSessionCache()
   }
@@ -452,6 +509,7 @@ export const newChat = () => {
 
 export const selectSession = (id: string) => {
   if (!get().importingHistory && get().sessions.some((session) => session.id === id)) {
+    log.info('chat', '切换会话', { sessionId: id })
     touchSession(id)
     set({ activeId: id })
     void ensureSessionLoaded(id)
@@ -602,6 +660,13 @@ export const sendMessage = (targetSessionId: string | null) => {
     createdAt: now,
   }
   const reply = createReply()
+  log.info('chat', '提交消息', {
+    sessionId,
+    newSession: targetSessionId === null,
+    textChars: text.length,
+    files: files.map((file) => ({ ext: file.name.split('.').pop() ?? '', size: file.size, image: file.isImage })),
+    historyRounds: history.length,
+  })
   updateSession(sessionId, (session) => ({
     ...appendBranch(session, history.at(-1)?.id ?? null, [question, reply]),
     updatedAt: now,
@@ -816,6 +881,20 @@ const refreshRequest = (sessionId: string, request: Request): Request => {
  * - 历史轮次（仅进入上下文的）中没有 serverId 的附件，多为导入的图片：从最新的消息往前逐张补传，
  *   失败静默跳过，该附件不进入本次请求，下次发送时再试。
  */
+/**
+ * 附件补传阶段本身的失败。
+ *
+ * 之前是这个阶段的任何异常都算「上传失败」：纯文字提问在旧 WebView 上抛个
+ * TypeError 也会显示成「上传失败」，完全看不出真正原因。现在只有这层包过
+ * 的错误才按上传失败展示，其它异常走协议错误，把原文露出来。
+ */
+class AttachmentStageError extends Error {
+  constructor(readonly reason: unknown) {
+    super(reason instanceof Error ? reason.message : String(reason))
+    this.name = 'AttachmentStageError'
+  }
+}
+
 const prepareFiles = async (sessionId: string, request: Request, signal: AbortSignal) => {
   const epoch = historyEpoch
   // 服务端判定 file_id 失效时会清掉会话里的 serverId，先用最新消息替换请求快照，
@@ -843,11 +922,14 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   const results = await Promise.race([uploads, aborted])
   const failed = results.find((result) => result.status === 'rejected')
   if (failed) {
-    throw failed.reason
+    throw new AttachmentStageError(failed.reason)
   }
 
   const pending = new Map<string, FileAttachment>()
-  for (const [user] of getContextRounds(request.history).toReversed()) {
+  // 倒序找最近的历史附件：不能用 toReversed()，Chrome 110 以下（安卓 13 出厂 WebView）没有这个方法
+  const rounds = getContextRounds(request.history)
+  for (let index = rounds.length - 1; index >= 0; index -= 1) {
+    const [user] = rounds[index]
     for (const file of user.files) {
       if (!file.serverId && !serverIds.has(file.id) && !pending.has(file.id)) {
         pending.set(file.id, file)
@@ -965,6 +1047,14 @@ const waitForRetry = (attempt: number, signal: AbortSignal) =>
 const streamReply = async (sessionId: string, initial: AssistantMessage, request: Request) => {
   beginStreamKeepAlive()
   const controller = new AbortController()
+  const startedAt = Date.now()
+  log.info('stream', '开始生成', {
+    sessionId,
+    model: initial.model ?? null,
+    thinking: initial.thinking ?? false,
+    search: initial.search ?? false,
+    continue: Boolean(initial.prefix),
+  })
   if (!getSession(sessionId)?.title) {
     titleRequests.add(controller)
   }
@@ -1046,15 +1136,27 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
       } catch (error) {
         if (controller.signal.aborted) {
           reply = settleReply(reply, 'stopped', Date.now())
+          log.info('stream', '生成已停止', { sessionId, attempt, ms: Date.now() - startedAt })
           break
         }
         if (preparing) {
-          reply = settleReply(reply, 'error', Date.now(), {
-            kind: 'upload',
-            message: '',
-            localMessage: describeUploadError(error),
-            retryable: isRetryableApiError(error),
-          })
+          const reason = error instanceof AttachmentStageError ? error.reason : error
+          if (error instanceof AttachmentStageError) {
+            logError('stream', '附件准备失败', reason, { sessionId, attempt })
+            reply = settleReply(reply, 'error', Date.now(), {
+              kind: 'upload',
+              message: '',
+              localMessage: describeUploadError(reason),
+              retryable: isRetryableApiError(reason),
+            })
+          } else {
+            // 不是附件的锅：把真实异常显示出来，别一律说成「上传失败」
+            logError('stream', '请求准备阶段异常', error, { sessionId, attempt })
+            reply = settleReply(reply, 'error', Date.now(), {
+              kind: 'protocol',
+              message: error instanceof Error ? error.message : String(error),
+            })
+          }
           break
         }
         // 附件失效：重新补传后重发。收到过内容块（含丢弃的客户端工具）后不自动重发。
@@ -1063,6 +1165,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           !receivedContent &&
           reuploadInvalidatedFiles(sessionId, request, error)
         ) {
+          log.warn('stream', '附件失效，重新补传后重试', { sessionId, attempt })
           await waitForRetry(attempt, controller.signal)
           if (controller.signal.aborted) {
             reply = settleReply(reply, 'stopped', Date.now())
@@ -1074,6 +1177,14 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           // 已收到 message_delta 的结束原因，只是缺了结尾的 message_stop
           reply = settleReply(reply, 'done', Date.now())
         } else if (error instanceof ApiError) {
+          log.error('stream', '生成失败', {
+            sessionId,
+            attempt,
+            kind: error.kind,
+            status: error.status,
+            message: error.message,
+            ms: Date.now() - startedAt,
+          })
           reply = settleReply(reply, 'error', Date.now(), {
             kind: error.kind,
             message: error.message,
@@ -1081,6 +1192,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             localMessage: error.localMessage,
           })
         } else {
+          logError('stream', '生成失败（非 API 错误）', error, { sessionId, attempt })
           reply = settleReply(reply, 'error', Date.now(), {
             kind: 'protocol',
             message: error instanceof Error ? error.message : String(error),
@@ -1095,6 +1207,13 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
     streamFlushes.delete(sessionId)
     cancelAnimationFrame(frame)
     updateReply(sessionId, reply)
+    log.info('stream', '生成结束', {
+      sessionId,
+      status: reply.status,
+      stopReason: reply.stopReason ?? null,
+      blocks: reply.blocks.map((block) => block.type),
+      ms: Date.now() - startedAt,
+    })
     set((state) => ({
       streaming: Object.fromEntries(
         Object.entries(state.streaming).filter(([id]) => id !== sessionId)

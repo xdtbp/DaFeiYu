@@ -5,7 +5,14 @@ import { defineConfig } from '@rspack/cli'
 import { rspack, type Configuration } from '@rspack/core'
 
 const dev = process.env.NODE_ENV !== 'production'
-const targets = ['chrome >= 105', 'edge >= 105', 'safari >= 16', 'firefox >= 110']
+/**
+ * 兼容目标：Chrome 49（Android 8 出厂 WebView 是 58，留出余量）。
+ *
+ * 之所以是 49 而不是 58：swc 只有在目标低于 58 时才会把 async generator / `for await`
+ * 降级；定成 58 会原样留下 ES2018 语法，老引擎直接语法错误白屏。
+ * CSS 用同一组目标，lightningcss 会把嵌套、`:is()` 等展开成老引擎能读的形式。
+ */
+const targets = ['chrome >= 49', 'and_chr >= 49', 'safari >= 11']
 const root = path.dirname(fileURLToPath(import.meta.url))
 const { version } = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8')
@@ -57,8 +64,8 @@ export const createConfig = ({
       { test: /\.module\.css$/, type: 'css/module', use: [cssLoader] },
       { test: /\.css$/, exclude: /\.module\.css$/, type: 'css', use: [cssLoader] },
       {
-        test: /\.(j|t)sx?$/,
-        exclude: /[\\/]node_modules[\\/]/,
+        test: /\.(m|c)?(j|t)sx?$/,
+        // node_modules 也要降级：KaTeX / micromark 等自带 ES2018+ 语法，老 WebView 解析不了
         loader: 'builtin:swc-loader',
         options: {
           jsc: {

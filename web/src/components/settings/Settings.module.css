@@ -708,3 +708,493 @@
   gap: 8px;
   width: 100%;
 }
+
+.aboutLogHint {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* API Key 输入框内的清除按钮 */
+.apiKeyClear {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--dsw-alias-label-caption);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--dsw-alias-label-primary);
+    background-color: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+/* 输入框同一行的蓝色「确定」按钮 */
+.apiKeyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.apiKeyRow .apiKeyInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.apiKeySubmit {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 100px;
+  background-color: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-static-neutral-bluish-00);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+}
+
+/* ---------------------------------------------------------- 中继二级页面 */
+.body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.subPage {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  /* 和设置弹窗同一层灰，深色模式下不会变成一块死黑 */
+  background: var(--dsw-alias-bg-layer-2);
+  animation: subPageIn 0.24s var(--ds-ease-in-out);
+}
+
+.subPageClosing {
+  animation: subPageOut 0.24s var(--ds-ease-in-out) forwards;
+  pointer-events: none;
+}
+
+@keyframes subPageOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+@keyframes subPageIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.subPageHead {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+}
+
+.subPageBack {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 10px 0 2px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--dsw-alias-brand-text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:active {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.subPageBackIcon {
+  display: inline-block;
+  width: 10px;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+}
+
+.subPageTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subPageAction {
+  flex-shrink: 0;
+}
+
+.subPageAdd {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  background: none;
+  color: var(--dsw-alias-label-primary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.subPagePrimary {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 100px;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-static-neutral-bluish-00);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.45;
+  }
+}
+
+.subPageBody {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 24px;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.subPageList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subPageEmpty {
+  padding: 32px 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.relayItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+}
+
+.relayItemMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.relayItemName {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relayItemActions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.relayGhost,
+.relayDanger {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.relayGhost {
+  border: 1px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.relayDanger {
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 40%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.relayForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.relayField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  span {
+    color: var(--dsw-alias-label-secondary);
+    font-size: 12px;
+  }
+
+  input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 42px;
+    padding: 0 14px;
+    border: 1px solid var(--dsw-alias-border-l2);
+    border-radius: 14px;
+    background: none;
+    color: var(--dsw-alias-label-primary);
+    font: inherit;
+    font-size: 13px;
+
+    &:focus {
+      border-color: var(--dsw-alias-brand-primary);
+      outline: none;
+    }
+  }
+}
+
+.relayFormActions {
+  display: flex;
+  gap: 8px;
+}
+
+.relayRouteRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+
+  & + & {
+    box-shadow: inset 0 1px 0 0 var(--dsw-alias-border-l2-darkmode-thin);
+  }
+}
+
+.relayRouteText {
+  flex: 1;
+  min-width: 0;
+}
+
+.relayHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  vertical-align: 1px;
+}
+
+.relaySelect {
+  flex-shrink: 0;
+  max-width: 150px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: none;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.relayChoice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: none;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.relayChoiceOn {
+  border-color: var(--dsw-alias-brand-primary);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
+}
+
+.subPageLink {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* 整行可点的设置项：把 div 换成 button 后要把原生样式压掉 */
+.cellClickable {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:active {
+    background-color: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+/* 问号提示气泡 */
+.hintWrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
+
+.hintButton {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 15px;
+  cursor: pointer;
+}
+
+.hintBubble {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  z-index: 6;
+  width: max-content;
+  max-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-3);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 17px;
+  transform: translateY(-50%);
+}
+
+/* 用户信息：本地账号头像与昵称 */
+.profileEditor {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 0;
+}
+
+.profileAvatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 20px;
+  cursor: pointer;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.profileName {
+  flex: 1;
+  min-width: 0;
+}
+
+.profileInput {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  margin-top: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: none;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+
+  &:focus {
+    border-color: var(--dsw-alias-brand-primary);
+    outline: none;
+  }
+}
+
+.hiddenFile {
+  display: none;
+}

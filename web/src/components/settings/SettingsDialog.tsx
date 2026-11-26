@@ -8,7 +8,7 @@ import {
   IconUploadOutline14,
 } from '../base/icons.js'
 import { BackupError, clearHistory, exportHistory } from '../../services/chat/backup.js'
-import { useIsMobile } from '../../app/viewport.js'
+import { exportLogFile } from '../../services/log.js'
 import {
   checkUpdate,
   GITHUB_HOME,
@@ -28,6 +28,7 @@ import { regionCodes, getRegionName, provinces } from '../../services/location.j
 import {
   isChineseBrowser,
   setAuthRoute,
+  setChatRelay,
   setModel,
   setFontScale,
   setLocale,
@@ -47,8 +48,11 @@ import { Button } from '../base/Button.js'
 import { Modal } from '../base/Modal.js'
 import { Select } from '../base/Select.js'
 import { showToast } from '../base/toastState.js'
-import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
+import { ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { BalanceCard } from './BalanceCard.js'
+import { useLocalProfile, readAvatar } from '../../services/localProfile.js'
+import { RelayEditPage, RelayListPage, RoutesPage, SubPage } from './RelayPages.js'
+import { useRelay } from '../../services/relay.js'
 import {
   IconSettingBolt,
   IconSettingDebug,
@@ -67,6 +71,9 @@ import {
   closeAbout,
   closeSettings,
   openAbout,
+  popSettingsPage,
+  pushSettingsPage,
+  setSettingsSection,
   useSettingsDialog,
   type SettingsSection,
 } from './settingsDialogState.js'
@@ -92,9 +99,10 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
 
 const SettingsContent = () => {
   const t = useTranslate()
-  const isMobile = useIsMobile()
   // 打开时按调用方指定的分组选中，之后在弹窗内切换
-  const [section, setSection] = useState(() => useSettingsDialog.getState().section)
+  const section = useSettingsDialog((state) => state.section)
+  const pages = useSettingsDialog((state) => state.pages)
+  const closingPage = useSettingsDialog((state) => state.closingPage)
   // 切换分组不丢失正在输入的 API Key 与导入状态
   const apiKeyEditor = useApiKeyEditor()
   const historyImport = useHistoryImport()
@@ -109,7 +117,7 @@ const SettingsContent = () => {
     const index = sections.findIndex((item) => item.value === section)
     const next = sections[index + direction]
     if (next) {
-      setSection(next.value)
+      setSettingsSection(next.value)
     }
   }
   const onPanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -166,15 +174,19 @@ const SettingsContent = () => {
               key={item.value}
               type="button"
               role="tab"
-              aria-selected={section === item.value}
-              className={clsx(styles.navItem, section === item.value && styles.navItemActive)}
-              onClick={() => setSection(item.value)}
+              aria-selected={section === item.value && pages.length === 0}
+              className={clsx(
+                styles.navItem,
+                section === item.value && pages.length === 0 && styles.navItemActive
+              )}
+              onClick={() => setSettingsSection(item.value)}
             >
               {item.icon}
               {t(item.label)}
             </button>
           ))}
         </div>
+        <div className={styles.body}>
         <div
           key={section}
           role="tabpanel"
@@ -188,15 +200,10 @@ const SettingsContent = () => {
           {section === 'general' ? (
             <>
               <ModelSetting />
-              <ThemeSetting />
-              <FontSizeSetting />
-              <ReasoningSetting />
-              <MaxTokensSetting />
-              <ThinkingDisplaySetting />
-              <LocaleSetting />
-              <TtsVoiceSetting />
-              <LocationSetting />
-              <WebviewDebugSetting />
+              <ModelConfigSetting onOpen={() => pushSettingsPage({ key: 'model-config' })} />
+              <InterfaceSetting onOpen={() => pushSettingsPage({ key: 'interface' })} />
+              <ProfileSetting onOpen={() => pushSettingsPage({ key: 'profile' })} />
+              <RoutesSetting onOpen={() => pushSettingsPage({ key: 'routes' })} />
               <AboutSetting />
             </>
           ) : (
@@ -222,6 +229,8 @@ const SettingsContent = () => {
               <HistoryProgress kind="import" />
               <ExportHistory disabled={historyBusy} />
               <HistoryProgress kind="export" />
+              <RelaySetting onOpen={() => pushSettingsPage({ key: 'relay' })} />
+              <AlwaysSyncSetting />
               <SettingCell
                 icon={<IconTrashOutline16 />}
                 label={t('deleteAllSessions')}
@@ -238,9 +247,82 @@ const SettingsContent = () => {
                   </Button>
                 }
               />
-              {isMobile ? <ApiKeyConfirm editor={apiKeyEditor} /> : null}
             </>
           )}
+        </div>
+          {[...pages, ...(closingPage ? [closingPage] : [])].map((page, index) => {
+            const closing = closingPage === page
+            const zIndex = 10 + index
+            if (page.key === 'routes') {
+              return <RoutesPage key="routes" onBack={popSettingsPage} closing={closing} zIndex={zIndex} />
+            }
+            if (page.key === 'model-config') {
+              return (
+                <SubPage
+                  key="model-config"
+                  title={t('settingsModelConfig')}
+                  onBack={popSettingsPage}
+                  closing={closing}
+                  zIndex={zIndex}
+                >
+                  <ReasoningSetting />
+                  <MaxTokensSetting />
+                </SubPage>
+              )
+            }
+            if (page.key === 'interface') {
+              return (
+                <SubPage
+                  key="interface"
+                  title={t('settingsInterface')}
+                  onBack={popSettingsPage}
+                  closing={closing}
+                  zIndex={zIndex}
+                >
+                  <FontSizeSetting />
+                  <ThemeSetting />
+                  <LocaleSetting />
+                  <ThinkingDisplaySetting />
+                  <TtsVoiceSetting />
+                </SubPage>
+              )
+            }
+            if (page.key === 'profile') {
+              return (
+                <SubPage
+                  key="profile"
+                  title={t('relayIdentityTitle')}
+                  onBack={popSettingsPage}
+                  closing={closing}
+                  zIndex={zIndex}
+                >
+                  <ProfileSourceSetting />
+                  <LocalProfileEditor />
+                  <LocationSetting />
+                </SubPage>
+              )
+            }
+            if (page.key === 'relay') {
+              return (
+                <RelayListPage
+                  key="relay"
+                  onBack={popSettingsPage}
+                  closing={closing}
+                  zIndex={zIndex}
+                  onEdit={(relayId) => pushSettingsPage({ key: 'relay-edit', relayId })}
+                />
+              )
+            }
+            return (
+              <RelayEditPage
+                key={`relay-edit-${page.relayId ?? 'new'}`}
+                relayId={page.relayId}
+                onBack={popSettingsPage}
+                closing={closing}
+                zIndex={zIndex}
+              />
+            )
+          })}
         </div>
       </Modal>
       {historyImport.file ? <ImportConfirm historyImport={historyImport} /> : null}
@@ -564,8 +646,10 @@ const ModelSetting = () => {
   const authRoute = useSettings((state) => state.authRoute)
   const model = useSettings((state) => state.model)
   const apiKey = useSettings((state) => state.apiKey)
+  const chatRelayId = useSettings((state) => state.chatRelayId)
   const signedIn = useAccount((state) => state.status === 'signed-in')
   const hasKey = Boolean(apiKey)
+  const relays = useRelay((state) => state.servers)
 
   // 只展示当前可用凭证对应的模型：有账号时账号模型排在前面，没配置 Key 就不出现 API Key 模型
   const options = [
@@ -587,6 +671,17 @@ const ModelSetting = () => {
           { value: 'apikey:deepseek-v4-pro', label: `${t('modelSourceApikey')} · DeepSeek-V4-Pro` },
         ]
       : []),
+    // 中继也能对话：共用中继侧配置的 Key，多设备不用各填一份
+    ...relays.flatMap((server) => [
+      {
+        value: `relay:${server.id}:deepseek-flash`,
+        label: `${server.name || server.url} · DeepSeek-V4.1-Flash`,
+      },
+      {
+        value: `relay:${server.id}:deepseek-v4-pro`,
+        label: `${server.name || server.url} · DeepSeek-V4-Pro`,
+      },
+    ]),
   ]
 
   if (options.length === 0) {
@@ -600,12 +695,19 @@ const ModelSetting = () => {
     )
   }
 
-  const preferred = `${authRoute}:${model}`
+  const preferred = chatRelayId ? `relay:${chatRelayId}:${model}` : `${authRoute}:${model}`
   const value = options.some((option) => option.value === preferred)
     ? preferred
     : options[0].value
 
   const onChange = (next: string) => {
+    if (next.startsWith('relay:')) {
+      const [, relayId, modelId] = next.split(':')
+      setChatRelay(relayId ?? null)
+      setModel(modelId === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash')
+      return
+    }
+    setChatRelay(null)
     const [route, id] = next.split(':')
     setAuthRoute(route === 'account' ? 'account' : 'apikey')
     setModel(id === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash')
@@ -688,81 +790,6 @@ const DEV_AVATAR = `https://github.com/${GITHUB_OWNER}.png`
 type UpdateState = 'idle' | 'checking' | 'latest' | 'available' | 'error'
 
 /** WebView 调试：默认关闭，开启前必须确认风险 */
-const WebviewDebugSetting = () => {
-  const t = useTranslate()
-  const supported = webviewDebugSupported()
-  const [enabled, setEnabled] = useState(webviewDebugEnabled)
-  const [confirming, setConfirming] = useState(false)
-
-  const toggle = () => {
-    if (!supported) {
-      return
-    }
-    if (enabled) {
-      setWebviewDebug(false)
-      setEnabled(false)
-      return
-    }
-    setConfirming(true)
-  }
-
-  return (
-    <>
-      <SettingCell
-        icon={<IconSettingDebug />}
-        label={t('settingsWebviewDebug')}
-        description={
-          !supported
-            ? t('webviewDebugUnsupported')
-            : enabled
-              ? t('webviewDebugOn')
-              : t('webviewDebugOff')
-        }
-        status={null}
-        action={
-          <button
-            type="button"
-            role="switch"
-            aria-checked={enabled}
-            aria-label={t('settingsWebviewDebug')}
-            disabled={!supported}
-            className={clsx(styles.switch, enabled && styles.switchOn)}
-            onClick={toggle}
-          >
-            <span className={styles.switchKnob} />
-          </button>
-        }
-      />
-      {confirming ? (
-        <Modal
-          title={t('webviewDebugWarningTitle')}
-          closable
-          onClose={() => setConfirming(false)}
-          footer={
-            <div className={styles.confirmActions}>
-              <Button variant="outlined" size="m" onClick={() => setConfirming(false)}>
-                {t('cancel')}
-              </Button>
-              <Button
-                size="m"
-                onClick={() => {
-                  setWebviewDebug(true)
-                  setEnabled(true)
-                  setConfirming(false)
-                }}
-              >
-                {t('webviewDebugConfirm')}
-              </Button>
-            </div>
-          }
-        >
-          <p className={styles.warningText}>{t('webviewDebugWarningBody')}</p>
-        </Modal>
-      ) : null}
-    </>
-  )
-}
-
 /** 关于软件：通用设置最底部，弹窗展示开发者、项目、版本与免责声明，可检查更新 */
 const AboutSetting = () => {
   const t = useTranslate()
@@ -809,6 +836,29 @@ const AboutDialog = ({ onClose }: { onClose: () => void }) => {
     }
   }, [])
 
+  // 连点作者头像 5 次：切换 WebView 调试（原「关于软件」里的开关入口）
+  const taps = useRef(0)
+  const tapTimer = useRef<number | null>(null)
+  const onAvatarTap = () => {
+    if (!webviewDebugSupported()) {
+      return
+    }
+    taps.current += 1
+    if (tapTimer.current) {
+      window.clearTimeout(tapTimer.current)
+    }
+    tapTimer.current = window.setTimeout(() => {
+      taps.current = 0
+    }, 1500)
+    if (taps.current < 5) {
+      return
+    }
+    taps.current = 0
+    const next = !webviewDebugEnabled()
+    setWebviewDebug(next)
+    showToast({ key: next ? 'webviewDebugOn' : 'webviewDebugOff' })
+  }
+
   const onCheck = async () => {
     setUpdate('checking')
     try {
@@ -821,10 +871,28 @@ const AboutDialog = ({ onClose }: { onClose: () => void }) => {
     }
   }
 
+  // 日志在写入时就已脱敏，这里直接把文件交给系统分享（选微信 / 邮件发出去）
+  const onExportLog = () => {
+    try {
+      if (exportLogFile() === 'failed') {
+        showToast({ key: 'logExportFailed', type: 'error' })
+      }
+    } catch {
+      showToast({ key: 'logExportFailed', type: 'error' })
+    }
+  }
+
   return (
     <Modal title={t('settingsAbout')} closable className={styles.aboutDialog} onClose={onClose}>
       <div className={styles.about}>
-        <img className={styles.aboutAvatar} src={avatarUrl} referrerPolicy="no-referrer" alt="" />
+        {/* 连点头像 5 次开关 WebView 调试：藏起来，避免误触 */}
+        <img
+          className={styles.aboutAvatar}
+          src={avatarUrl}
+          referrerPolicy="no-referrer"
+          alt=""
+          onClick={onAvatarTap}
+        />
         <div className={styles.aboutName}>{t('aboutDeveloperName')}</div>
         <a className={styles.aboutProject} href={GITHUB_HOME} target="_blank" rel="noreferrer">
           {t('aboutProject')}
@@ -840,6 +908,10 @@ const AboutDialog = ({ onClose }: { onClose: () => void }) => {
         >
           {update === 'checking' ? t('aboutChecking') : t('aboutCheckUpdate')}
         </Button>
+        <Button variant="outlined" size="m" className={styles.aboutCheckButton} onClick={onExportLog}>
+          {t('aboutExportLog')}
+        </Button>
+        <div className={styles.aboutLogHint}>{t('aboutExportLogHint')}</div>
         {update === 'latest' ? (
           <div className={styles.aboutUpdate}>
             {t('aboutLatest', { version: latestVersion || getAppVersion() })}
@@ -870,6 +942,224 @@ const errorStatus = (key: TranslationKey, error: unknown): Status => ({
   error: true,
 })
 
+/** 通用设置 → 模型配置（推理强度、最大输出长度） */
+const ModelConfigSetting = ({ onOpen }: { onOpen: () => void }) => {
+  const t = useTranslate()
+  return (
+    <SettingCell
+      icon={<IconSettingThinking />}
+      label={t('settingsModelConfig')}
+      status={null}
+      description={t('settingsModelConfigDesc')}
+      action={<SubPageLink />}
+      onClick={onOpen}
+    />
+  )
+}
+
+/** 通用设置 → 界面设置（字体、主题、语言、思考过程、朗读音色） */
+const InterfaceSetting = ({ onOpen }: { onOpen: () => void }) => {
+  const t = useTranslate()
+  return (
+    <SettingCell
+      icon={<IconSettingFont />}
+      label={t('settingsInterface')}
+      status={null}
+      description={t('settingsInterfaceDesc')}
+      action={<SubPageLink />}
+      onClick={onOpen}
+    />
+  )
+}
+
+/** 通用设置 → 用户信息（来源、本地账号、位置） */
+const ProfileSetting = ({ onOpen }: { onOpen: () => void }) => {
+  const t = useTranslate()
+  const servers = useRelay((state) => state.servers)
+  const source = useRelay((state) => state.identitySource)
+  const relayId = useRelay((state) => state.identityRelayId)
+  const nickname = useLocalProfile((state) => state.nickname)
+  const label =
+    source === 'local'
+      ? `${t('profileLocal')}${nickname ? ` · ${nickname}` : ''}`
+      : source === 'relay'
+        ? servers.find((server) => server.id === relayId)?.name || t('relayTargetAccount')
+        : t('relayTargetAccount')
+  return (
+    <SettingCell
+      icon={<IconSettingInfo />}
+      label={t('relayIdentityTitle')}
+      status={null}
+      description={label}
+      action={<SubPageLink />}
+      onClick={onOpen}
+    />
+  )
+}
+
+/** 用户信息页：显示来源（账号 / 本地 / 某台中继） */
+const ProfileSourceSetting = () => {
+  const t = useTranslate()
+  const servers = useRelay((state) => state.servers)
+  const source = useRelay((state) => state.identitySource)
+  const relayId = useRelay((state) => state.identityRelayId)
+  const setIdentity = useRelay((state) => state.setIdentity)
+  const value = source === 'relay' ? `relay:${relayId}` : source
+
+  return (
+    <SettingCell
+      icon={<IconSettingInfo />}
+      label={t('profileSource')}
+      status={null}
+      description={t('profileSourceDesc')}
+      action={
+        <Select
+          ariaLabel={t('profileSource')}
+          value={value}
+          options={[
+            { value: 'account', label: t('relayTargetAccount') },
+            { value: 'local', label: t('profileLocal') },
+            ...servers.map((server) => ({
+              value: `relay:${server.id}`,
+              label: server.name || server.url,
+            })),
+          ]}
+          onChange={(next) => {
+            if (next.startsWith('relay:')) {
+              setIdentity('relay', next.slice(6))
+            } else {
+              setIdentity(next === 'local' ? 'local' : 'account', null)
+            }
+          }}
+        />
+      }
+    />
+  )
+}
+
+/** 用户信息页里的本地账号：昵称 + 头像（头像自动裁成正方形并压缩） */
+const LocalProfileEditor = () => {
+  const t = useTranslate()
+  const nickname = useLocalProfile((state) => state.nickname)
+  const avatar = useLocalProfile((state) => state.avatar)
+  const setNickname = useLocalProfile((state) => state.setNickname)
+  const setAvatar = useLocalProfile((state) => state.setAvatar)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  return (
+    <div className={styles.profileEditor}>
+      <button
+        type="button"
+        className={styles.profileAvatar}
+        onClick={() => fileRef.current?.click()}
+        aria-label={t('profileAvatarChange')}
+      >
+        {avatar ? (
+          <img src={avatar} alt="" />
+        ) : (
+          <span>{(nickname || t('profileLocalDefault')).slice(0, 1).toUpperCase()}</span>
+        )}
+      </button>
+      <div className={styles.profileName}>
+        <div className={styles.label}>{t('profileNickname')}</div>
+        <input
+          className={styles.profileInput}
+          value={nickname}
+          placeholder={t('profileNicknamePlaceholder')}
+          onChange={(event) => setNickname(event.target.value.slice(0, 24))}
+        />
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className={styles.hiddenFile}
+        onChange={async (event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (!file) {
+            return
+          }
+          const data = await readAvatar(file)
+          if (data) {
+            setAvatar(data)
+            showToast({ key: 'profileAvatarSaved' })
+          }
+        }}
+      />
+    </div>
+  )
+}
+
+/** 二级页面入口右侧的箭头（整行都可点，这里只做提示） */
+const SubPageLink = () => (
+  <span className={styles.subPageLink} aria-hidden>
+    ›
+  </span>
+)
+
+/** 数据管理 → 接口设置 */
+const RoutesSetting = ({ onOpen }: { onOpen: () => void }) => {
+  const t = useTranslate()
+  return (
+    <SettingCell
+      icon={<IconSettingModel />}
+      label={t('relayRoutesTitle')}
+      status={null}
+      description={t('relayRoutesDesc')}
+      action={<SubPageLink />}
+      onClick={onOpen}
+    />
+  )
+}
+
+/** 数据管理 → 中继服务器 */
+const RelaySetting = ({ onOpen }: { onOpen: () => void }) => {
+  const t = useTranslate()
+  const servers = useRelay((state) => state.servers)
+  const description =
+    servers.length === 0
+      ? t('relaySectionDesc')
+      : servers.map((server) => server.name || server.url).join('、')
+  return (
+    <SettingCell
+      icon={<IconSettingGlobe />}
+      label={t('relaySectionTitle')}
+      status={null}
+      description={description}
+      action={<SubPageLink />}
+      onClick={onOpen}
+    />
+  )
+}
+
+/** 数据管理 → 始终同步最新消息 */
+const AlwaysSyncSetting = () => {
+  const t = useTranslate()
+  const alwaysSync = useRelay((state) => state.alwaysSync)
+  const setAlwaysSync = useRelay((state) => state.setAlwaysSync)
+  return (
+    <SettingCell
+      icon={<IconSettingDebug />}
+      label={t('relaySyncAlways')}
+      status={null}
+      description={t('relaySyncAlwaysDesc')}
+      action={
+        <button
+          type="button"
+          role="switch"
+          aria-checked={alwaysSync}
+          aria-label={t('relaySyncAlways')}
+          className={clsx(styles.switch, alwaysSync && styles.switchOn)}
+          onClick={() => setAlwaysSync(!alwaysSync)}
+        >
+          <span className={styles.switchKnob} />
+        </button>
+      }
+    />
+  )
+}
+
 const SettingCell = ({
   icon,
   label,
@@ -877,6 +1167,7 @@ const SettingCell = ({
   status,
   action,
   className,
+  onClick,
 }: {
   icon?: ReactNode
   label: string
@@ -884,10 +1175,12 @@ const SettingCell = ({
   status: Status
   action: ReactNode
   className?: string
+  /** 整行可点：二级页面的入口别再让用户去点那个小箭头 */
+  onClick?: () => void
 }) => {
   const t = useTranslate()
-  return (
-    <div className={clsx(styles.cell, styles.row, className)}>
+  const content = (
+    <>
       {icon ? <span className={styles.cellIcon}>{icon}</span> : null}
       <div className={styles.text}>
         <div className={styles.label}>{label}</div>
@@ -900,8 +1193,20 @@ const SettingCell = ({
         ) : null}
       </div>
       {action}
-    </div>
+    </>
   )
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className={clsx(styles.cell, styles.row, styles.cellClickable, className)}
+        onClick={onClick}
+      >
+        {content}
+      </button>
+    )
+  }
+  return <div className={clsx(styles.cell, styles.row, className)}>{content}</div>
 }
 
 /** 选文件后先提示覆盖；确认后才检查文件并执行导入，任何错误都提示导入失败。 */

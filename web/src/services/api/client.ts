@@ -1,5 +1,7 @@
 import { translate, type TranslationMessage } from '../../i18n/index.js'
-import { bearerAuthHeaders, messageAuthHeaders } from './auth.js'
+import { log, logError } from '../log.js'
+import { relayFor } from '../relay.js'
+import { resolveAuth } from './auth.js'
 import { readMessageEvent } from './parseEvent.js'
 import { readServerSentEvents } from './sse.js'
 import type {
@@ -13,8 +15,8 @@ import type {
 
 /** 构建期 API 地址，默认 https://api.deepseek.com；本地开发支持开发服务器代理 */
 export const API_ORIGIN = __API_ORIGIN__
-/** Anthropic 兼容接口的前缀 */
-const ANTHROPIC_BASE_URL = `${API_ORIGIN}/anthropic/v1`
+/** Anthropic 兼容接口的路径；直连时拼在 API_ORIGIN 后面，走中继时拼在中继转发前缀后面 */
+const ANTHROPIC_PATH = '/anthropic/v1'
 
 export type ApiErrorKind =
   /** 非 2xx 响应 */
@@ -66,31 +68,61 @@ const readErrorResponse = async (
   return new ApiError(kind, message, response.status)
 }
 
+/** 日志里只写路径，不写可能带参数的完整地址 */
+const pathOf = (url: string): string => {
+  try {
+    return new URL(url).pathname
+  } catch {
+    return url
+  }
+}
+
+/** 请求头转成普通对象，交给日志按字段名脱敏（Authorization / x-api-key 会被打码） */
+const headerEntries = (headers: HeadersInit | undefined): Record<string, string> => {
+  try {
+    return Object.fromEntries(new Headers(headers).entries())
+  } catch {
+    return {}
+  }
+}
+
 export const request = async (url: string, init: RequestInit): Promise<Response> => {
+  const method = init.method ?? 'GET'
+  const path = pathOf(url)
+  const started = Date.now()
+  log.debug('api', `→ ${method} ${path}`, { headers: headerEntries(init.headers) })
   let response: Response
   try {
     response = await fetch(url, init)
   } catch (error) {
     if (init.signal?.aborted) {
+      log.info('api', `${method} ${path} 已中止 ${Date.now() - started}ms`)
       throw error
     }
+    logError('api', `✗ ${method} ${path} 请求未发出 ${Date.now() - started}ms`, error)
     throw new ApiError('network', error instanceof Error ? error.message : String(error))
   }
+  log.debug('api', `← ${response.status} ${method} ${path} ${Date.now() - started}ms`, {
+    type: response.headers.get('content-type') ?? '',
+    requestId: response.headers.get('x-request-id') ?? undefined,
+  })
   if (!response.ok) {
-    throw await readErrorResponse(response)
+    const failure = await readErrorResponse(response)
+    log.error('api', `✗ ${method} ${path} 失败 ${response.status} ${Date.now() - started}ms`, {
+      message: failure.message,
+      kind: failure.kind,
+    })
+    throw failure
   }
   return response
 }
 
-/** 鉴权头集中在 auth.ts：API Key 走 x-api-key，Harness 账号走 x-dsh-auth-token */
-const anthropicHeaders = (apiKey: string, beta: boolean): Record<string, string> =>
-  messageAuthHeaders(apiKey, beta)
-
 /** 用 GET /models 校验 API Key（不产生费用） */
 export const verifyApiKey = async (apiKey: string, signal?: AbortSignal): Promise<void> => {
-  await request(`${API_ORIGIN}/models`, {
+  const auth = await resolveAuth('chat', apiKey, 'bearer')
+  await request(`${auth.base ?? API_ORIGIN}/models`, {
     method: 'GET',
-    headers: bearerAuthHeaders(apiKey),
+    headers: auth.headers,
     signal,
   })
 }
@@ -100,9 +132,10 @@ export const getBalance = async (
   apiKey: string,
   signal?: AbortSignal
 ): Promise<BalanceResponse> => {
-  const response = await request(`${API_ORIGIN}/user/balance`, {
+  const auth = await resolveAuth('chat', apiKey, 'bearer')
+  const response = await request(`${auth.base ?? API_ORIGIN}/user/balance`, {
     method: 'GET',
-    headers: bearerAuthHeaders(apiKey),
+    headers: auth.headers,
     signal,
   })
   return (await response.json()) as BalanceResponse
@@ -116,9 +149,10 @@ export const getBalanceByApiKey = async (
   apiKey: string,
   signal?: AbortSignal
 ): Promise<BalanceResponse> => {
-  const response = await request(`${API_ORIGIN}/user/balance`, {
+  const auth = await resolveAuth('chat', apiKey, 'bearer')
+  const response = await request(`${auth.base ?? API_ORIGIN}/user/balance`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: auth.headers,
     signal,
   })
   return (await response.json()) as BalanceResponse
@@ -139,9 +173,10 @@ export const uploadFile = async (
     form.append('purpose', purpose)
   }
   form.append('file', file)
-  const response = await request(`${ANTHROPIC_BASE_URL}/files`, {
+  const auth = await resolveAuth('parse', apiKey, 'anthropic', true)
+  const response = await request(`${auth.base ?? API_ORIGIN}${ANTHROPIC_PATH}/files`, {
     method: 'POST',
-    headers: anthropicHeaders(apiKey, true),
+    headers: auth.headers,
     body: form,
     signal,
   })
@@ -150,9 +185,10 @@ export const uploadFile = async (
 
 /** DELETE /anthropic/v1/files/{file_id} */
 export const deleteFile = async (apiKey: string, fileId: string): Promise<void> => {
-  await request(`${ANTHROPIC_BASE_URL}/files/${encodeURIComponent(fileId)}`, {
+  const auth = await resolveAuth('parse', apiKey, 'anthropic', true)
+  await request(`${auth.base ?? API_ORIGIN}${ANTHROPIC_PATH}/files/${encodeURIComponent(fileId)}`, {
     method: 'DELETE',
-    headers: anthropicHeaders(apiKey, true),
+    headers: auth.headers,
   })
 }
 
@@ -164,6 +200,34 @@ const hasFile = (body: CreateMessageRequest) =>
   )
 
 /**
+ * 请求结构摘要：排障要看的是「几轮上下文、每轮有哪些块、各多长」，
+ * 而不是用户说了什么，所以正文一律只记长度。
+ */
+const describeMessageRequest = (body: CreateMessageRequest) => ({
+  model: body.model,
+  thinking: body.thinking,
+  maxTokens: body.max_tokens,
+  systemChars: typeof body.system === 'string' ? body.system.length : 0,
+  turns: body.messages.map((message) => ({
+    role: message.role,
+    blocks:
+      typeof message.content === 'string'
+        ? [{ type: 'text', chars: message.content.length }]
+        : message.content.map((block) => ({
+            type: block.type,
+            ...('text' in block && typeof block.text === 'string'
+              ? { chars: block.text.length }
+              : {}),
+            ...('thinking' in block && typeof block.thinking === 'string'
+              ? { chars: block.thinking.length }
+              : {}),
+          })),
+  })),
+  tools: body.tools?.map((tool) => tool.name) ?? [],
+  title: body.title?.enabled === true,
+})
+
+/**
  * POST /anthropic/v1/messages（stream: true），逐个产出流式事件，收到 message_stop 时结束。
  * ping、保活注释与无法解析的内容不产出；中止请求时抛出 signal 的 AbortError。
  */
@@ -172,10 +236,17 @@ export async function* streamMessage(
   body: CreateMessageRequest,
   signal: AbortSignal
 ): AsyncGenerator<MessageStreamEvent> {
-  const response = await request(`${ANTHROPIC_BASE_URL}/messages`, {
+  const started = Date.now()
+  log.info('sse', '发起流式请求', describeMessageRequest(body))
+  // 模型选了中继时整轮请求都走中继（联网搜索也在同一个 /messages 里）；
+  // 只有直连模型时才让「网页搜索」单独分流。
+  const searchable = body.tools?.some((tool) => tool.name === 'deepseek_web_search') ?? false
+  const kind = relayFor('chat') ? 'chat' : searchable ? 'search' : 'chat'
+  const auth = await resolveAuth(kind, apiKey, 'anthropic', hasFile(body))
+  const response = await request(`${auth.base ?? API_ORIGIN}${ANTHROPIC_PATH}/messages`, {
     method: 'POST',
     headers: {
-      ...anthropicHeaders(apiKey, hasFile(body)),
+      ...auth.headers,
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     },
@@ -184,32 +255,74 @@ export async function* streamMessage(
   })
   const contentType = response.headers.get('Content-Type') ?? ''
   if (!response.body || !contentType.includes('text/event-stream')) {
+    log.error('sse', '响应不是事件流', { status: response.status, contentType })
     throw await readErrorResponse(response, 'protocol', '')
   }
-  for await (const { event: eventName, data } of readServerSentEvents(response.body, signal)) {
-    let payload: unknown
-    try {
-      payload = JSON.parse(data)
-    } catch {
-      if (eventName !== 'error') {
+  /** 每个内容块累积的增量条数，结束时一并记录，避免逐条刷屏 */
+  const deltas = new Map<number, number>()
+  let events = 0
+  let firstEventAt = 0
+  try {
+    for await (const { event: eventName, data } of readServerSentEvents(response.body, signal)) {
+      let payload: unknown
+      try {
+        payload = JSON.parse(data)
+      } catch {
+        if (eventName !== 'error') {
+          log.warn('sse', '无法解析的事件帧', { event: eventName, chars: data.length })
+          continue
+        }
+      }
+      if (isErrorBody(payload)) {
+        log.error('sse', '流中返回错误', { message: payload.error.message, event: eventName })
+        throw new ApiError('stream', payload.error.message)
+      }
+      if (eventName === 'error') {
+        log.error('sse', '流中 error 帧', { chars: data.length })
+        throw new ApiError('stream', data)
+      }
+      const event = readMessageEvent(payload)
+      if (!event) {
+        log.debug('sse', '跳过非消息事件', { event: eventName })
         continue
       }
+      events += 1
+      firstEventAt ||= Date.now()
+      if (event.type === 'content_block_delta') {
+        deltas.set(event.index, (deltas.get(event.index) ?? 0) + 1)
+      } else {
+        log.debug('sse', `事件 ${event.type}`, summarizeEvent(event, firstEventAt - started))
+      }
+      yield event
+      if (event.type === 'message_stop') {
+        log.info('sse', '流结束', {
+          events,
+          firstEventMs: firstEventAt - started,
+          totalMs: Date.now() - started,
+          deltas: [...deltas.entries()].map(([index, count]) => ({ index, count })),
+        })
+        return
+      }
     }
-    if (isErrorBody(payload)) {
-      throw new ApiError('stream', payload.error.message)
-    }
-    if (eventName === 'error') {
-      throw new ApiError('stream', data)
-    }
-    const event = readMessageEvent(payload)
-    if (!event) {
-      continue
-    }
-    yield event
-    if (event.type === 'message_stop') {
-      return
-    }
+  } catch (error) {
+    logError('sse', '流式请求异常', error, { events, totalMs: Date.now() - started })
+    throw error
   }
   // 服务端没有提供错误内容时保持为空，不推测断流原因。
+  log.error('sse', '流在 message_stop 之前结束', { events, totalMs: Date.now() - started })
   throw new ApiError('interrupted', '')
+}
+
+/** 事件摘要：只保留类型与关键计数，不含正文 */
+const summarizeEvent = (event: MessageStreamEvent, firstEventMs: number): Record<string, unknown> => {
+  switch (event.type) {
+    case 'message_start':
+      return { firstEventMs, model: event.message.model, usage: event.message.usage }
+    case 'content_block_start':
+      return { index: event.index, block: event.content_block.type }
+    case 'message_delta':
+      return { stopReason: event.delta.stop_reason, usage: event.usage }
+    default:
+      return { firstEventMs }
+  }
 }

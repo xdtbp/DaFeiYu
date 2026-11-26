@@ -13,10 +13,12 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
 import android.view.WindowManager
+import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -64,6 +66,36 @@ class MainActivity : Activity() {
     private var cameraPhotoFile: File? = null
     private lateinit var auth: DshAuth
     private var lastImeBottom = -1
+
+    /**
+     * 原生侧运行日志（环形缓冲）：页面加载、权限、文件选择、账号、录音、异常等。
+     * 前端导出日志时通过 AndroidApp.logDump() 取走，和网页日志拼成一个文件。
+     * 只记事件与状态，不记账号、令牌、文件名等个人信息。
+     */
+    private val nativeLogs = ArrayDeque<String>()
+    private val logLock = Any()
+    private val logTimeFormat = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+
+    private fun record(tag: String, message: String) {
+        val line = synchronized(logLock) {
+            "${logTimeFormat.format(java.util.Date())} [$tag] ${scrub(message).take(600)}"
+        }
+        synchronized(logLock) {
+            if (nativeLogs.size >= NATIVE_LOG_MAX) {
+                nativeLogs.removeFirst()
+            }
+            nativeLogs.addLast(line)
+        }
+    }
+
+    /** 原生日志的兜底脱敏：万一消息里带了密钥、邮箱、手机号也不落盘 */
+    private fun scrub(text: String): String = text
+        .replace(Regex("\\b(sk|pk|ak|rk)-[A-Za-z0-9_-]{6,}"), "***")
+        .replace(Regex("\\b(Bearer|Basic)\\s+\\S{6,}"), "$1 ***")
+        .replace(Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"), "***@***")
+        .replace(Regex("\\b1[3-9]\\d{9}\\b"), "1*********")
+        .replace(Regex("data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]+", RegexOption.IGNORE_CASE), "[data-url]")
+        .replace('\n', ' ')
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -116,6 +148,12 @@ class MainActivity : Activity() {
         webView.addJavascriptInterface(VoiceBridge(), "AndroidVoice")
         webView.addJavascriptInterface(AppBridge(), "AndroidApp")
         normalizeLauncher()
+        record(
+            "app",
+            "启动 version=${packageName} sdk=${Build.VERSION.SDK_INT} " +
+                "device=${Build.MANUFACTURER} ${Build.MODEL} " +
+                "debug=${getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_WEBVIEW_DEBUG, false)}",
+        )
 
         // 注意顺序：路径前缀按注册顺序匹配，"/local/" 必须排在兜底的 "/" 之前
         val assetLoader = WebViewAssetLoader.Builder()
@@ -135,6 +173,9 @@ class MainActivity : Activity() {
             builtInZoomControls = false
             displayZoomControls = false
             textZoom = 100
+            // 页面本身走 https://appassets 加载，用户自建中继可能只有 http：
+            // 不放开混合内容的话，fetch 会在 1ms 内直接 Failed to fetch
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         }
 
         webView.webViewClient = object : WebViewClient() {
@@ -152,6 +193,7 @@ class MainActivity : Activity() {
                 if (url.host == "appassets.androidplatform.net") {
                     return false
                 }
+                record("webview", "打开外链 host=${url.host}")
                 return try {
                     startActivity(Intent(Intent.ACTION_VIEW, url))
                     true
@@ -162,6 +204,7 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
+                record("webview", "页面加载完成")
                 // 让前端启动时立刻拿到已缓存的账号信息
                 view.evaluateJavascript(
                     "window.__dshAuth && window.__dshAuth(${auth.cached()})",
@@ -176,6 +219,11 @@ class MainActivity : Activity() {
                 filePathCallback: ValueCallback<Array<Uri>>,
                 fileChooserParams: WebChromeClient.FileChooserParams,
             ): Boolean {
+                record(
+                    "file",
+                    "打开文件选择器 capture=${fileChooserParams.isCaptureEnabled} " +
+                        "mode=${fileChooserParams.mode} accept=${fileChooserParams.acceptTypes.joinToString(",")}",
+                )
                 fileCallback?.onReceiveValue(null)
                 fileCallback = filePathCallback
                 return try {
@@ -206,6 +254,7 @@ class MainActivity : Activity() {
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
+                record("perm", "网页申请权限 ${request.resources.joinToString(",")}")
                 val wantsMic = request.resources.any { it == PermissionRequest.RESOURCE_AUDIO_CAPTURE }
                 if (wantsMic &&
                     ContextCompat.checkSelfPermission(
@@ -224,6 +273,18 @@ class MainActivity : Activity() {
                     return
                 }
                 request.grant(request.resources)
+            }
+
+            /** WebView 内部的错误（未捕获异常、资源加载失败等）也记一笔，前端钩子拿不到这些 */
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                    record(
+                        "webview",
+                        "console ${consoleMessage.message()} " +
+                            "(${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})",
+                    )
+                }
+                return false
             }
         }
 
@@ -327,6 +388,8 @@ class MainActivity : Activity() {
     }
 
     private fun emitAuth(json: String) {
+        // 只记登录状态，令牌本身不落日志
+        record("auth", if (json.contains("\"signed-in\"")) "账号状态 signed-in" else "账号状态变更")
         runOnUiThread {
             webView.evaluateJavascript("window.__dshAuth && window.__dshAuth($json)", null)
             if (json.contains("\"signed-in\"")) {
@@ -408,6 +471,7 @@ class MainActivity : Activity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        record("ui", "回调 requestCode=$requestCode result=$resultCode")
         when (requestCode) {
             REQ_FILE -> {
                 // 不能用 FileChooserParams.parseResult：部分 WebView 版本只读 data 里的单个 URI，
@@ -424,6 +488,7 @@ class MainActivity : Activity() {
                         data.data?.let { uris.add(it) }
                     }
                 }
+                record("file", "选择完成 count=${uris.size}")
                 fileCallback?.onReceiveValue(if (uris.isEmpty()) null else uris.toTypedArray())
                 fileCallback = null
             }
@@ -464,6 +529,7 @@ class MainActivity : Activity() {
      * 因此额外注册 OnBackInvokedCallback，否则会出现「浮层里一返回就杀进程」。
      */
     private fun dispatchBack() {
+        record("ui", "系统返回键")
         if (backPending) {
             return
         }
@@ -485,6 +551,7 @@ class MainActivity : Activity() {
     }
 
     override fun onResume() {
+        record("life", "onResume")
         super.onResume()
         webView.onResume()
         webView.resumeTimers()
@@ -507,11 +574,13 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        record("life", "onPause")
         // 不调用 webView.onPause()：生成中的流要留在后台继续跑
         super.onPause()
     }
 
     override fun onDestroy() {
+        record("life", "onDestroy")
         auth.cancel()
         try {
             wakeLock?.takeIf { it.isHeld }?.release()
@@ -560,6 +629,79 @@ class MainActivity : Activity() {
 
     /** 应用元信息：版本号等，供「关于软件」展示 */
     inner class AppBridge {
+        /** 轻震动：下拉到阈值等交互用，WebView 里 navigator.vibrate 不可靠 */
+        @android.webkit.JavascriptInterface
+        fun haptic(): Boolean {
+            return try {
+                val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+                    val manager =
+                        getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE)
+                            as android.os.VibratorManager
+                    manager.defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                }
+                if (!vibrator.hasVibrator()) {
+                    return false
+                }
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(12, 140))
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        /** 供前端导出日志时取走原生侧记录 */
+        @android.webkit.JavascriptInterface
+        fun logDump(): String = synchronized(logLock) { nativeLogs.joinToString("\n") }
+
+        /**
+         * 把前端拼好的日志写成 txt 存到系统「下载」目录，和「导出历史」一致。
+         * 不走系统分享：分享面板会把文件丢给其他客户端，容易导错地方。
+         */
+        @android.webkit.JavascriptInterface
+        fun saveLog(name: String, base64: String): Boolean {
+            return try {
+                val bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                val safeName = name.replace(Regex("[\\/:*?\"<>|]"), "_")
+                    .ifEmpty { "dafeiyu-log.txt" }
+                if (Build.VERSION.SDK_INT >= 29) {
+                    val values = android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                        put(
+                            android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                            android.os.Environment.DIRECTORY_DOWNLOADS,
+                        )
+                    }
+                    val uri = contentResolver.insert(
+                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        values,
+                    ) ?: return false
+                    contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                } else {
+                    val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS,
+                    )
+                    dir.mkdirs()
+                    File(dir, safeName).writeBytes(bytes)
+                }
+                record("log", "日志已保存到下载 $safeName ${bytes.size} bytes")
+                runOnUiThread {
+                    android.widget.Toast.makeText(
+                        this@MainActivity,
+                        "已保存到「下载」：$safeName",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                true
+            } catch (e: Exception) {
+                record("log", "保存日志失败 ${e.javaClass.simpleName}")
+                false
+            }
+        }
+
         @android.webkit.JavascriptInterface
         fun version(): String = try {
             packageManager.getPackageInfo(packageName, 0).versionName ?: "0.0.0"
@@ -744,6 +886,7 @@ class MainActivity : Activity() {
 
         @android.webkit.JavascriptInterface
         fun begin(name: String): Boolean {
+            record("file", "开始保存文件 ext=${name.substringAfterLast('.', "")}")
             closeSaveStream()
             val safeName = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifEmpty {
                 "deepseek_data.zip"
@@ -791,6 +934,7 @@ class MainActivity : Activity() {
 
         @android.webkit.JavascriptInterface
         fun end() {
+            record("file", "保存结束")
             val name = saveName
             closeSaveStream()
             if (name != null) {
@@ -806,6 +950,7 @@ class MainActivity : Activity() {
 
         @android.webkit.JavascriptInterface
         fun abort() {
+            record("file", "保存中止")
             closeSaveStream()
         }
     }
@@ -1224,5 +1369,7 @@ class MainActivity : Activity() {
         private const val RECORD_RATE = 16000
         private const val MAX_RECORD_MS = 120_000L
         private const val REQ_PICK_ARCHIVE = 1004
+        /** 原生日志环形缓冲的行数上限 */
+        private const val NATIVE_LOG_MAX = 400
     }
 }

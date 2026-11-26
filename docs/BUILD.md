@@ -23,6 +23,19 @@ corepack pnpm build
 
 产物在 `web/dist/`。
 
+### 兼容目标（重要）
+
+`rspack.config.ts` 里的 `targets` 固定为 `chrome >= 49`，并且 **node_modules 也走 swc 降级**。
+原因：应用跑在系统 WebView 里，Android 8 出厂版本只有 Chrome 58；而 KaTeX、micromark 等依赖
+自带 ES2018+ 语法（`for await`、Unicode 属性正则 `\p{P}`、对象展开），不降级的话老引擎连解析都过不了，
+表现是**启动白屏**。降到 49 是为了让 swc 连 async generator / `for await` 一起降级（定成 58 反而不会降）。
+
+内置方法降级管不到（`Object.hasOwn`、`Array.at`、`ResizeObserver` 等），由 `src/services/compat.ts`
+在渲染前补齐——它必须保持 `main.tsx` 的第一个 import。
+
+改完可以用根目录的 `compat-harness.mjs` 验证：它通过 CDP 在页面脚本前删掉这些 API，等价于把引擎
+退回 Chrome 58，再跑一遍启动与打开会话的链路。
+
 ### Windows 注意事项
 
 `package.json` 的 build 脚本使用了 `NODE_ENV=production` 前缀，在 cmd/PowerShell 下会失败。
