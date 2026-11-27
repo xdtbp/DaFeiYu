@@ -559,3 +559,16 @@ export const IconSelectAllOutline16 = () => (
     />
   </svg>
 )
+
+/** 定位到当前位置：准星 */
+export const IconLocateOutline16 = () => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="8" cy="8" r="2.9" stroke="currentColor" strokeWidth={1.3} />
+    <path
+      d="M8 1.4v2.2M8 12.4v2.2M1.4 8h2.2M12.4 8h2.2"
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeLinecap="round"
+    />
+  </svg>
+)

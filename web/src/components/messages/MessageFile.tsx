@@ -3,22 +3,35 @@ import { useEffect, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { useUploads } from '../../services/attachments.js'
 import { loadFile } from '../../services/chat/db.js'
+import { resolveStorageUrl } from '../../services/relayFiles.js'
 import type { FileAttachment } from '../../services/chat/types.js'
 import { IconPhotoErrorFill20, IconRefreshOutline16 } from '../base/icons.js'
 import { Tooltip } from '../base/Tooltip.js'
 import { FileCard } from '../files/FileCard.js'
 import styles from './MessageFile.module.css'
 
-/** 原件从 IndexedDB 读出并生成本地地址；undefined 表示加载中，null 表示原件缺失。 */
-const useFileUrl = (id: string) => {
-  const [fileUrl, setFileUrl] = useState<{ id: string; url: string | null } | null>(null)
+/**
+ * 原件地址：优先用 IndexedDB 的本地副本，本地没有（换设备 / 清缓存）时
+ * 用中继归档换一张票据地址。undefined 表示加载中，null 表示确实取不到。
+ */
+const useFileUrl = (id: string, storageId?: string | null) => {
+  const [fileUrl, setFileUrl] = useState<{ key: string; url: string | null } | null>(null)
+  const key = `${id}:${storageId ?? ''}`
   useEffect(() => {
     let objectUrl: string | null = null
     let cancelled = false
-    loadFile(id).then((blob) => {
+    void loadFile(id).then(async (blob) => {
+      if (cancelled) {
+        return
+      }
+      if (blob) {
+        objectUrl = URL.createObjectURL(blob)
+        setFileUrl({ key, url: objectUrl })
+        return
+      }
+      const remote = storageId ? await resolveStorageUrl(storageId) : null
       if (!cancelled) {
-        objectUrl = blob ? URL.createObjectURL(blob) : null
-        setFileUrl({ id, url: objectUrl })
+        setFileUrl({ key, url: remote })
       }
     })
     return () => {
@@ -27,8 +40,8 @@ const useFileUrl = (id: string) => {
         URL.revokeObjectURL(objectUrl)
       }
     }
-  }, [id])
-  return fileUrl?.id === id ? fileUrl.url : undefined
+  }, [id, storageId, key])
+  return fileUrl?.key === key ? fileUrl.url : undefined
 }
 
 /** blob 转 base64，交给原生用系统应用打开 */
@@ -89,7 +102,7 @@ export const MessageFile = ({
   onRetry: (() => void) | null
 }) => {
   const t = useTranslate()
-  const url = useFileUrl(file.id)
+  const url = useFileUrl(file.id, file.storageId)
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const upload = useUploadState(file)
   const uploading = upload?.status === 'uploading'

@@ -110,11 +110,21 @@ class MainActivity : Activity() {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
         webView = WebView(this)
-        webView.setBackgroundColor(Color.WHITE)
+        // 启动瞬间就跟随系统明暗，别再铺一层白（暗色下会像闪光弹）
+        val nightMode =
+            resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        val startColor =
+            if (nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
+                Color.parseColor("#151517")
+            } else {
+                Color.WHITE
+            }
+        webView.setBackgroundColor(startColor)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(startColor))
         // WebView 的渲染表面会忽略自身 padding，必须由父容器限制它的实际尺寸，
         // 视口才会真正收缩（状态栏、输入法都是靠这个避让的）。
         val root = android.widget.FrameLayout(this)
-        root.setBackgroundColor(Color.WHITE)
+        root.setBackgroundColor(startColor)
         rootView = root
         root.addView(
             webView,

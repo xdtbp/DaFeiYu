@@ -25,14 +25,15 @@
   cursor: pointer;
 }
 
+/* 挂 body 按可视视口坐标定位，不受滚动容器裁切 */
 .tip {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 6px);
-  z-index: 20;
+  position: fixed;
+  z-index: 2100;
+  box-sizing: border-box;
   width: max-content;
   max-width: 240px;
   padding: 5px 9px;
+  overflow-y: auto;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 8px;
   background-color: var(--dsw-alias-bg-layer-2);
@@ -41,35 +42,23 @@
   font-size: 11px;
   line-height: 16px;
   white-space: normal;
-  transform: translateY(-50%);
+  scrollbar-width: none;
   animation: hintIn 0.16s var(--ds-ease-in-out) both;
+
+  &::-webkit-scrollbar {
+    width: 0;
+  }
 }
 
-.tipTop {
-  top: auto;
-  right: 0;
-  bottom: calc(100% + 6px);
-  left: auto;
-  transform: none;
+/* 首帧还没量出坐标时先隐藏，避免闪现在左上角 */
+.tipMeasuring {
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  animation: none;
 }
 
 @keyframes hintIn {
-  from {
-    opacity: 0;
-    transform: translateY(calc(-50% + 3px));
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(-50%);
-  }
-}
-
-.tipTop {
-  animation-name: hintInTop;
-}
-
-@keyframes hintInTop {
   from {
     opacity: 0;
     transform: translateY(3px);

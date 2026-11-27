@@ -11,8 +11,8 @@ android {
         applicationId = "com.dschat.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 21
-        versionName = "0.8.12"
+        versionCode = 36
+        versionName = "0.8.27"
     }
 
     buildTypes {

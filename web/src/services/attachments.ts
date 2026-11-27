@@ -4,6 +4,7 @@ import { uploadFile } from './api/client.js'
 import { classifyApiError, getUploadErrorInfo, isRetryableApiError } from './api/errors.js'
 import type { FilePurpose } from './api/types.js'
 import { ACCEPT_FILE_EXTS } from './uploadExts.js'
+import { archiveOriginal } from './relayFiles.js'
 
 /** 允许上传的扩展名，按扩展名白名单过滤，清单见 uploadExts.ts */
 export const ACCEPTED_EXTS = ACCEPT_FILE_EXTS
@@ -147,7 +148,7 @@ const enqueueUpload = (
  */
 export type UploadTask =
   | { status: 'uploading' }
-  | { status: 'done'; serverId: string }
+  | { status: 'done'; serverId: string; storageId?: string | null }
   | { status: 'error'; error: TranslationMessage; retryable: boolean }
 
 type UploadState = { tasks: Record<string, UploadTask> }
@@ -162,6 +163,12 @@ const setTask = (id: string, task: UploadTask | null) =>
   }))
 
 const pending = new Map<string, { promise: Promise<string>; controller: AbortController }>()
+
+/** 附件 → 中继归档 id（进程内缓存，写进消息后即可不再需要） */
+const archivedStorageIds = new Map<string, string>()
+
+/** 取某个附件的中继归档 id；没有归档（未配置中继/归档失败）返回 null */
+export const getArchivedStorageId = (id: string): string | null => archivedStorageIds.get(id) ?? null
 
 /** 开始（或复用进行中的）上传，返回服务端 file_id；失败时任务记为 error 并抛出原错误 */
 export const uploadAttachment = (
@@ -178,8 +185,13 @@ export const uploadAttachment = (
   const controller = new AbortController()
   setTask(id, { status: 'uploading' })
   const promise = enqueueUpload(apiKey, blob, name, isImage, controller.signal)
-    .then((serverId) => {
-      setTask(id, { status: 'done', serverId })
+    .then(async (serverId) => {
+      // 上传成功后把原件归档到中继：失败只降级，发送照常
+      const storageId = await archiveOriginal(blob, name)
+      if (storageId) {
+        archivedStorageIds.set(id, storageId)
+      }
+      setTask(id, { status: 'done', serverId, storageId })
       return serverId
     })
     .catch((error: unknown) => {

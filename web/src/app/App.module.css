@@ -8,15 +8,6 @@
   background-color: var(--dsw-alias-bg-base);
 }
 
-.mobileMain {
-  /* 侧边栏拖动时只改这个变量，不触发 React 渲染 */
-  transform: translateX(var(--sider-offset, 0px));
-}
-
-:global(html[data-sider-dragging]) .mobileMain {
-  transition: none;
-}
-
 .main {
   position: relative;
   display: flex;

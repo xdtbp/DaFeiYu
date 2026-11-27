@@ -214,7 +214,6 @@
   height: 100%;
   /* 下拉时自己接管，别让浏览器再叠一层回弹 */
   overscroll-behavior: contain;
-  will-change: transform;
   margin: 0 -2px;
   padding: 0 2px;
   overflow-y: auto;
@@ -431,12 +430,8 @@
   left: 0;
   z-index: 800;
   touch-action: pan-y;
-  transform: translateX(calc(var(--sider-offset, 0px) - 300px));
+  transform: translateX(-300px);
   transition: transform 0.24s var(--ds-ease-in-out);
-}
-
-:global(html[data-sider-dragging]) .drawer {
-  transition: none;
 }
 
 /* 收起后抽屉仍在 DOM 里（保留滚动位置），只是移到屏幕外，不能再接点击 */
@@ -720,4 +715,35 @@
   }
 }
 
+/* 列表末尾留白：定位按钮不盖住最后一条会话 */
+.listEndSpacer {
+  height: 56px;
+  pointer-events: none;
+}
+
+/* 定位当前对话 */
+.locateButton {
+  position: absolute;
+  right: 10px;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.14);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition:
+    opacity 0.16s var(--ds-ease-in-out),
+    transform 0.16s var(--ds-ease-in-out);
+
+  &:active {
+    transform: scale(0.92);
+  }
 }

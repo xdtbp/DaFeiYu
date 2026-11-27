@@ -1,3 +1,9 @@
+.wrap {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 40;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -7,8 +13,14 @@
   padding: 12px 10px 4px;
 }
 
-.title {
+/* 标题列：弹层以它为定位基准，宽度与标题一致 */
+.titleWrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.title {
   min-width: 0;
   margin: 0 12px;
   overflow: hidden;
@@ -16,4 +28,125 @@
   text-overflow: ellipsis;
   font: var(--dsw-font-s-strong-14);
   color: var(--dsw-alias-label-primary);
+}
+
+.titleText {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 标题本身当按钮：整块可点，右边带一个会转的箭头 */
+.titleButton {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  margin: 0 12px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  font: var(--dsw-font-s-strong-14);
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  cursor: pointer;
+
+  &:active {
+    background: var(--dsw-specific-selector);
+  }
+}
+
+.titleButtonOpen {
+  background: var(--dsw-specific-selector);
+}
+
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 0.18s var(--ds-ease-in-out);
+}
+
+.titleButtonOpen .chevron {
+  transform: rotate(180deg);
+}
+
+/* 紧贴标题下方的一层「我发过的话」 */
+.jumpPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 12px;
+  left: 12px;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  max-height: 52vh;
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 不要滚动条 */
+  scrollbar-width: none;
+  transform-origin: top center;
+  animation: jumpPanelIn 0.18s var(--ds-ease-in-out);
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
+.jumpPanelClosing {
+  animation: jumpPanelOut 0.16s var(--ds-ease-in-out) forwards;
+}
+
+.jumpItem {
+  flex-shrink: 0;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  &:active {
+    background: var(--dsw-specific-selector);
+  }
+}
+
+@keyframes jumpPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scaleY(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes jumpPanelOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scaleY(0.96);
+  }
 }

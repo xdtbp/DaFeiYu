@@ -1,11 +1,17 @@
 import { create } from 'zustand'
 import { createId } from '../../utils/id.js'
 import { refreshBalances } from '../balanceRefresh.js'
-import { ApiError, streamMessage } from '../api/client.js'
+import { ApiError, streamMessage, type StreamControl } from '../api/client.js'
 import { beginStreamKeepAlive, endStreamKeepAlive } from '../power.js'
 import type { ChatModel, CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
-import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
+import {
+  cancelUpload,
+  describeUploadError,
+  getArchivedStorageId,
+  uploadAttachment,
+  useUploads,
+} from '../attachments.js'
 import { log, logError } from '../log.js'
 import { useSettings } from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
@@ -46,6 +52,17 @@ const SESSION_CACHE_LIMIT = 5
 const SAFETY_CHECK = { level: 'high' } as const
 /** 服务端判定 file_id 失效后，重新补传并重发的最多次数（不含首次请求） */
 const FILE_RETRY_LIMIT = 2
+/** 同一轮流式回答最多续推几次（断线重连，不重发请求） */
+const STREAM_RESUME_LIMIT = 3
+
+/** 续推用的流 id：8–64 位 [A-Za-z0-9_-] */
+const makeStreamId = (): string => {
+  try {
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 32)
+  } catch {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36)
+  }
+}
 /** 退避基数，第 n 次重试等待 2^n 倍；连续失败达到上限就放弃，把原始报错展示出来 */
 const FILE_RETRY_BASE_DELAY = 1000
 
@@ -656,6 +673,7 @@ export const sendMessage = (targetSessionId: string | null) => {
       size,
       isImage,
       mimeType,
+      storageId: getArchivedStorageId(id),
     })),
     createdAt: now,
   }
@@ -1104,31 +1122,73 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           tools: serverTools(initial.search ?? false),
           ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),
         }
-        const events = streamMessage(
-          requestSettings.apiKey ?? '',
-          payload,
-          controller.signal
-        )
         const blockIndexes = new Map<number, number>()
-        for await (const event of events) {
-          receivedContent ||= event.type === 'content_block_start'
-          if (
-            event.type === 'message_delta' &&
-            (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'max_tokens') &&
-            event.delta.title?.trim() &&
-            titleRequests.has(controller) &&
-            !controller.signal.aborted &&
-            !get().importingHistory
-          ) {
-            const title = event.delta.title.trim()
-            updateSession(sessionId, (session) => (session.title ? session : { ...session, title }))
-            titleRequests.delete(controller)
-          }
-          reply = applyEvent(reply, event, Date.now(), blockIndexes)
-          if (document.visibilityState === 'hidden') {
-            flush()
-          } else {
-            frame ||= requestAnimationFrame(flush)
+        // 中继续推：一轮回答只用一个流 id，断线后用 Last-Event-ID 补帧，不重发请求
+        const control: StreamControl = { streamId: makeStreamId(), cursor: 0 }
+        let resumeAttempts = 0
+        let completed = false
+        for (;;) {
+          try {
+            const events = streamMessage(
+              requestSettings.apiKey ?? '',
+              payload,
+              controller.signal,
+              control,
+              control.streamId ?? undefined
+            )
+            for await (const event of events) {
+              receivedContent ||= event.type === 'content_block_start'
+              if (event.type === 'message_stop') {
+                completed = true
+              }
+              if (
+                event.type === 'message_delta' &&
+                (event.delta.stop_reason === 'end_turn' || event.delta.stop_reason === 'max_tokens') &&
+                event.delta.title?.trim() &&
+                titleRequests.has(controller) &&
+                !controller.signal.aborted &&
+                !get().importingHistory
+              ) {
+                const title = event.delta.title.trim()
+                updateSession(sessionId, (session) => (session.title ? session : { ...session, title }))
+                titleRequests.delete(controller)
+              }
+              reply = applyEvent(reply, event, Date.now(), blockIndexes)
+              if (document.visibilityState === 'hidden') {
+                flush()
+              } else {
+                frame ||= requestAnimationFrame(flush)
+              }
+            }
+            // 服务端明确报了错（relay_end.status === 'error'）就别假装成功
+            if (control.end?.status === 'error' && !completed) {
+              throw new ApiError('stream', control.end.code ?? '')
+            }
+            break
+          } catch (streamError) {
+            const resumable =
+              !controller.signal.aborted &&
+              streamError instanceof ApiError &&
+              (streamError.kind === 'interrupted' || streamError.kind === 'network') &&
+              // 只有服务端确认支持续推才重连，否则会变成「重发请求」重复计费
+              control.supported === true &&
+              control.streamId !== null &&
+              resumeAttempts < STREAM_RESUME_LIMIT
+            if (!resumable) {
+              throw streamError
+            }
+            resumeAttempts += 1
+            log.warn('stream', '断线续推', {
+              sessionId,
+              attempt: resumeAttempts,
+              cursor: control.cursor,
+            })
+            // 轻退避，避免立刻又撞上同一个断点
+            await new Promise((resolve) => setTimeout(resolve, 300 * resumeAttempts))
+            if (controller.signal.aborted) {
+              throw streamError
+            }
+            continue
           }
         }
         reply = settleReply(reply, 'done', Date.now())

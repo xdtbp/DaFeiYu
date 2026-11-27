@@ -31,10 +31,10 @@ export const SessionItem = memo(function SessionItem({
   active: boolean
   selectionMode?: boolean
   selected?: boolean
-  onDelete: () => void
-  onToggleSelect?: () => void
-  onMultiSelect?: () => void
-  onSelect?: () => void
+  onDelete: (id: string) => void
+  onToggleSelect?: (id: string) => void
+  onMultiSelect?: (id: string) => void
+  onSelect?: (id: string) => void
 }) {
   const t = useTranslate()
   const [editing, setEditing] = useState(false)
@@ -79,11 +79,11 @@ export const SessionItem = memo(function SessionItem({
       data-session-id={session.id}
       onClick={() => {
         if (selectionMode) {
-          onToggleSelect?.()
+          onToggleSelect?.(session.id)
           return
         }
         if (onSelect) {
-          onSelect()
+          onSelect(session.id)
           return
         }
         selectSession(session.id)
@@ -110,7 +110,7 @@ export const SessionItem = memo(function SessionItem({
                 key: 'select',
                 label: t('sessionMenuMultiSelect'),
                 icon: <IconSelectAllOutline16 />,
-                onSelect: () => onMultiSelect?.(),
+                onSelect: () => onMultiSelect?.(session.id),
               },
               {
                 key: 'pin',
@@ -123,7 +123,7 @@ export const SessionItem = memo(function SessionItem({
                 label: t('delete'),
                 icon: <IconTrashOutline16 />,
                 danger: true,
-                onSelect: onDelete,
+                onSelect: () => onDelete(session.id),
               },
             ]}
           >

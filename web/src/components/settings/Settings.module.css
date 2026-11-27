@@ -147,6 +147,7 @@
 }
 
 .label {
+  color: var(--dsw-alias-label-primary);
   font-size: 13px;
   line-height: 20px;
 }
@@ -1295,4 +1296,24 @@
   display: flex;
   align-items: center;
   font-size: 13px;
+}
+
+/* 模型：标题一行，选择器单独一行占满宽度 */
+.modelCell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  padding: 12px 0;
+}
+
+.modelHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modelCell > button {
+  width: 100%;
+  justify-content: space-between;
 }

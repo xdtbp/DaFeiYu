@@ -1,5 +1,8 @@
 .item {
   position: relative;
+  /* 几百条会话时，屏幕外的行不参与布局与绘制 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 40px;
   display: flex;
   align-items: center;
   box-sizing: border-box;

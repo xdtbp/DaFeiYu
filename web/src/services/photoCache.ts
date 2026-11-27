@@ -60,8 +60,46 @@ const parseList = (raw: string): { id: string }[] => {
   }
 }
 
+/** 待解码的预览：一张一张来，别在启动时一口气解 12 张 */
+const queue: string[] = []
+let pumpTimer: number | null = null
+
+/** 每次最多解几张，解完让出主线程 */
+const PER_TICK = 3
+
+const pump = () => {
+  if (pumpTimer !== null) {
+    return
+  }
+  const step = () => {
+    for (let i = 0; i < PER_TICK; i++) {
+      const id = queue.shift()
+      if (!id) {
+        pumpTimer = null
+        return
+      }
+      const preview = readPreview(id)
+      if (!preview) {
+        continue
+      }
+      const { photos, ready, fresh } = usePhotoCache.getState()
+      if (photos.some((photo) => photo.id === id)) {
+        continue
+      }
+      usePhotoCache.setState({
+        // 新图插到最前，挤掉最后一张
+        photos: [{ id, preview }, ...photos].slice(0, LIMIT),
+        fresh: ready ? [id, ...fresh.filter((item) => item !== id)].slice(0, 3) : [],
+        ready: true,
+      })
+    }
+    pumpTimer = window.setTimeout(step, 8)
+  }
+  pumpTimer = window.setTimeout(step, 0)
+}
+
 /**
- * 与相册比对一次。
+ * 与相册比对一次：只做「查 id + 排队」，真正的解码分帧进行。
  * @returns 是否有新增（调用方据此播动画）
  */
 export const refreshPhotos = (): boolean => {
@@ -79,33 +117,36 @@ export const refreshPhotos = (): boolean => {
 
   const { photos, ready } = usePhotoCache.getState()
   const known = new Map(photos.map((photo) => [photo.id, photo]))
+  // 顺序跟着相册走；已解码的保留，缺的排队
   const next: CachedPhoto[] = []
-  const fresh: string[] = []
+  const missing: string[] = []
   for (const id of ids) {
     const cached = known.get(id)
     if (cached) {
       next.push(cached)
-      continue
-    }
-    const preview = readPreview(id)
-    if (!preview) {
-      continue
-    }
-    next.push({ id, preview })
-    if (ready) {
-      fresh.push(id)
+    } else if (!missing.includes(id)) {
+      missing.push(id)
     }
   }
-  const trimmed = next.slice(0, LIMIT)
-  const changed =
-    trimmed.length !== photos.length || trimmed.some((photo, index) => photo.id !== photos[index]?.id)
-  if (changed || !ready) {
-    usePhotoCache.setState({ photos: trimmed, fresh, ready: true })
+  const changed = next.length !== photos.length || next.some((photo, i) => photo.id !== photos[i]?.id)
+  if (changed) {
+    usePhotoCache.setState({ photos: next })
   }
-  return fresh.length > 0
+  if (!ready) {
+    usePhotoCache.setState({ ready: true })
+  }
+  for (const id of missing) {
+    if (!queue.includes(id)) {
+      queue.push(id)
+    }
+  }
+  if (missing.length > 0) {
+    pump()
+  }
+  return missing.length > 0
 }
 
-/** 立刻把当前列表读进缓存（首次打开面板前也可以调用） */
+/** 打开面板前调用：把当前列表读进缓存（解码同样分帧） */
 export const hydratePhotos = (): void => {
   refreshPhotos()
 }
@@ -117,7 +158,21 @@ export const startPhotoWatcher = (intervalMs = 20_000) => {
   if (timer !== null || !bridge()) {
     return
   }
-  refreshPhotos()
+  // 首屏刚出来时不要解码相册：等页面空下来再跑，避免和首帧抢主线程
+  // 首屏后先等 1.5s，再挑空闲时段预热，别和任何启动工作抢
+  window.setTimeout(() => {
+    const warmup = () => refreshPhotos()
+    const idle = (
+      window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void
+      }
+    ).requestIdleCallback
+    if (idle) {
+      idle(warmup, { timeout: 4000 })
+    } else {
+      warmup()
+    }
+  }, 1500)
   timer = window.setInterval(() => {
     if (!document.hidden) {
       refreshPhotos()

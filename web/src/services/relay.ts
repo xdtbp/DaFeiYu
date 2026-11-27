@@ -10,7 +10,7 @@ import { createId } from '../utils/id.js'
  */
 
 export type ApiKind = 'chat' | 'search' | 'parse' | 'speech'
-export type RouteTarget = 'account' | 'apikey' | 'relay'
+export type RouteTarget = 'account' | 'apikey' | 'relay' | 'disabled'
 
 export type RelayServer = {
   id: string

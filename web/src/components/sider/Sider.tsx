@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import {
+  IconLocateOutline16,
   IconPanelLeftOutline16,
   IconSearchOutline16,
   IconSettingsOutline16,
@@ -20,7 +21,7 @@ import { IconButton } from '../base/IconButton.js'
 import { Modal } from '../base/Modal.js'
 import { showToast } from '../base/toastState.js'
 import { openSettings } from '../settings/settingsDialogState.js'
-import { closeMobileSider, useMobileSider } from './mobileSiderState.js'
+import { bindSiderElements, closeMobileSider, useMobileSider } from './mobileSiderState.js'
 import { setKeyboardResize } from '../../services/keyboard.js'
 import {
   clearSiderReveal,
@@ -92,6 +93,46 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
   const [searching, setSearching] = useState(false)
   // 会话可能有上千条，一次全量渲染会把抽屉动画拖到卡死：按页增量渲染
   const [visibleCount, setVisibleCount] = useState(SIDER_PAGE_SIZE)
+  // 首屏先不构建会话行：等页面空下来再渲染，避免和启动抢主线程
+  const [listReady, setListReady] = useState(!mobile)
+
+  // 用户急着打开抽屉时立刻补上，别让他看到空列表
+  useEffect(() => {
+    if (open && !listReady) {
+      setListReady(true)
+    }
+  }, [open, listReady])
+
+  // 用户急着打开抽屉时立刻补上，别让他看到空列表
+  useEffect(() => {
+    if (open && !listReady) {
+      setListReady(true)
+    }
+  }, [open, listReady])
+
+  useEffect(() => {
+    if (listReady) {
+      return
+    }
+    let cancelled = false
+    const show = () => {
+      if (!cancelled) {
+        setListReady(true)
+      }
+    }
+    const idle = (
+      window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void
+      }
+    ).requestIdleCallback
+    const timer = idle ? (idle(show, { timeout: 2000 }), null) : window.setTimeout(show, 1200)
+    return () => {
+      cancelled = true
+      if (timer !== null) {
+        window.clearTimeout(timer)
+      }
+    }
+  }, [listReady])
   // 待定位的会话：搜索命中后滚到视野中间
   const [pendingReveal, setPendingReveal] = useState<string | null>(null)
   /** 下拉指示器：直接改它的 style，不走 React 渲染，保证跟手 */
@@ -165,8 +206,11 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
     setSelectedIds([])
   }
 
-  const toggleSelected = (id: string) =>
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+  const toggleSelected = useCallback(
+    (id: string) =>
+      setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id])),
+    []
+  )
 
   const onListScroll = useCallback(() => {
     const element = listRef.current
@@ -315,32 +359,54 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
       }
     }
 
+    /** 正在拉的那根手指；多指时只认它，别人的手指既不接管也不打断 */
+    let touchId: number | null = null
+
     const onStart = (event: TouchEvent) => {
-      if (refreshingRef.current || list.scrollTop > 0 || event.touches.length !== 1) {
-        startY = null
+      if (refreshingRef.current || list.scrollTop > 0 || touchId !== null) {
         return
       }
-      startY = event.touches[0].clientY
+      const touch = event.touches[0]
+      if (!touch) {
+        return
+      }
+      touchId = touch.identifier
+      startY = touch.clientY
       distance = 0
       armed = false
       dragging = false
     }
 
     const onMove = (event: TouchEvent) => {
-      if (startY === null || refreshingRef.current || event.touches.length !== 1) {
+      if (touchId === null || refreshingRef.current) {
         return
       }
-      const dy = event.touches[0].clientY - startY
+      // 中途多了一根手指：放弃这次下拉、平滑回弹，别把它冻在半路
+      if (event.touches.length > 1) {
+        touchId = null
+        startY = null
+        dragging = false
+        armed = false
+        reset(true)
+        return
+      }
+      const touch = [...event.touches].find((item) => item.identifier === touchId)
+      if (!touch || startY === null) {
+        return
+      }
+      const dy = touch.clientY - startY
       if (dy <= 0) {
         if (dragging) {
           dragging = false
           reset(true)
         }
         startY = null
+        touchId = null
         return
       }
       if (list.scrollTop > 0) {
         startY = null
+        touchId = null
         return
       }
       // 手指移动超过 6px 才接管，避免影响轻点和横向滑动
@@ -360,10 +426,16 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
       }
     }
 
-    const onEnd = () => {
-      if (startY === null) {
+    const onEnd = (event: TouchEvent) => {
+      if (touchId === null) {
         return
       }
+      // 只认「拉的那根手指」抬起；另一根手指抬起时什么都不做
+      const isMine = [...event.changedTouches].some((item) => item.identifier === touchId)
+      if (!isMine) {
+        return
+      }
+      touchId = null
       startY = null
       dragging = false
       if (!armed) {
@@ -373,23 +445,53 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
       void runRefresh()
     }
 
+    /** 手势被系统打断（来电、切后台）：按「没拉到阈值」处理 */
+    const onCancel = () => {
+      touchId = null
+      startY = null
+      dragging = false
+      armed = false
+      reset(true)
+    }
+
     list.addEventListener('touchstart', onStart, { passive: true })
     list.addEventListener('touchmove', onMove, { passive: false })
     list.addEventListener('touchend', onEnd)
-    list.addEventListener('touchcancel', onEnd)
+    list.addEventListener('touchcancel', onCancel)
     return () => {
       list.removeEventListener('touchstart', onStart)
       list.removeEventListener('touchmove', onMove)
       list.removeEventListener('touchend', onEnd)
-      list.removeEventListener('touchcancel', onEnd)
+      list.removeEventListener('touchcancel', onCancel)
     }
   }, [])
 
+  /** 滚动到当前对话（平滑滚动，不直接跳） */
+  const locateActive = () => {
+    const list = listRef.current
+    if (!list || !activeId) {
+      return
+    }
+    const target = list.querySelector<HTMLElement>(`[data-session-id="${activeId}"]`)
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   // 点击列表里的某个会话：位置不用管，列表一直在，浏览器自然记得
-  const handleSessionSelect = (sessionId: string) => {
+  const handleSessionSelect = useCallback((sessionId: string) => {
     selectSession(sessionId)
     closeMobileSider()
-  }
+  }, [])
+
+  // 每行都是 memo 的，回调必须保持引用稳定，否则列表一重渲染就是几百个子组件全跑一遍
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
+  const handleDelete = useCallback((id: string) => {
+    const target = sessionsRef.current.find((item) => item.id === id)
+    if (target) {
+      setDeleting(target)
+    }
+  }, [])
+  const handleMultiSelect = useCallback(() => setSelectionMode(true), [])
 
   return (
     <div className={clsx(styles.sider, mobile && styles.mobile)}>
@@ -508,29 +610,43 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
             ref={listRef}
             onScroll={onListScroll}
           >
-            {limitedGroups.map((group) => (
-              <div
-                key={group.key}
-                className={clsx(styles.section, group.pinned && styles.pinnedSection)}
-              >
-                <div className={styles.sectionHeader}>{group.label}</div>
-                {group.sessions.map((session) => (
-                  <SessionItem
-                    key={session.id}
-                    session={session}
-                    active={session.id === activeId}
-                    selectionMode={selectionMode}
-                    selected={selectedIds.includes(session.id)}
-                    onToggleSelect={() => toggleSelected(session.id)}
-                    onMultiSelect={() => setSelectionMode(true)}
-                    onSelect={() => handleSessionSelect(session.id)}
-                    onDelete={() => setDeleting(session)}
-                  />
-                ))}
-              </div>
-            ))}
+            {listReady
+              ? limitedGroups.map((group) => (
+                  <div
+                    key={group.key}
+                    className={clsx(styles.section, group.pinned && styles.pinnedSection)}
+                  >
+                    <div className={styles.sectionHeader}>{group.label}</div>
+                    {group.sessions.map((session) => (
+                      <SessionItem
+                        key={session.id}
+                        session={session}
+                        active={session.id === activeId}
+                        selectionMode={selectionMode}
+                        selected={selectedIds.includes(session.id)}
+                        onToggleSelect={toggleSelected}
+                        onMultiSelect={handleMultiSelect}
+                        onSelect={handleSessionSelect}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </div>
+                ))
+              : null}
+            {/* 末尾留白：定位按钮浮在这里时不会挡住最后一条对话 */}
+            <div className={styles.listEndSpacer} aria-hidden />
           </div>
         )}
+        {activeId ? (
+          <button
+            type="button"
+            className={styles.locateButton}
+            aria-label={t('siderLocateActive')}
+            onClick={locateActive}
+          >
+            <IconLocateOutline16 />
+          </button>
+        ) : null}
       </div>
       <AccountFooter />
       <div className={styles.bottom}>
@@ -641,16 +757,25 @@ export const Sider = ({ mobile = false, open = true }: { mobile?: boolean; open?
  */
 export const MobileSider = () => {
   const open = useMobileSider((state) => state.open)
-  const visible = open
-  // 位移由 `--sider-offset` 驱动，与主界面共用一个变量
+  const drawerRef = useRef<HTMLDivElement>(null)
+
+  // 把抽屉元素交给手势模块：拖动时只改它的 transform
+  useEffect(() => {
+    bindSiderElements({ drawer: drawerRef.current })
+    return () => bindSiderElements({ drawer: null })
+  }, [])
   return (
     <>
       <div
-        className={clsx(styles.drawerMask, !visible && styles.drawerHidden)}
-        onClick={visible ? closeMobileSider : undefined}
+        className={clsx(styles.drawerMask, !open && styles.drawerHidden)}
+        onClick={open ? closeMobileSider : undefined}
       />
-      <div className={clsx(styles.drawer, !visible && styles.drawerHidden)} aria-hidden={!visible}>
-        <Sider mobile open={visible} />
+      <div
+        ref={drawerRef}
+        className={clsx(styles.drawer, !open && styles.drawerHidden)}
+        aria-hidden={!open}
+      >
+        <Sider mobile open={open} />
       </div>
     </>
   )

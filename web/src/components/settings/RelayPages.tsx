@@ -325,6 +325,7 @@ export const RoutesPage = ({
     ...(signedIn ? [{ value: 'account', label: t('relayTargetAccount') }] : []),
     ...(apiKey ? [{ value: 'apikey', label: t('relayTargetApikey') }] : []),
     ...servers.map((server) => ({ value: `relay:${server.id}`, label: server.name || server.url })),
+    { value: 'disabled', label: t('relayTargetDisabled') },
   ]
 
   const valueOf = (choice: RouteChoice) =>
@@ -334,7 +335,7 @@ export const RoutesPage = ({
     if (value.startsWith('relay:')) {
       setRoute(kind, { target: 'relay', relayId: value.slice(6) })
     } else {
-      setRoute(kind, { target: value as 'account' | 'apikey', relayId: null })
+      setRoute(kind, { target: value as 'account' | 'apikey' | 'disabled', relayId: null })
     }
   }
 

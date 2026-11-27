@@ -23,6 +23,8 @@ export type FileAttachment = {
   isImage: boolean
   /** 具体 MIME；导入时没有原件或无法识别的为空字符串，不影响图片身份。 */
   mimeType: string
+  /** 中继上的归档 id（v2.2 files 能力）；换设备时用它取回原件 */
+  storageId?: string | null
 }
 
 /** 本地消息的分支关系；字段缺省时按线性消息列表处理。 */

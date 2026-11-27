@@ -1,6 +1,6 @@
 import { useAccount } from '../account.js'
 import { useSettings } from '../settings.js'
-import { ensureRelayToken, normalizeUrl, relayFor, relayKey, type ApiKind } from '../relay.js'
+import { ensureRelayToken, normalizeUrl, relayFor, relayKey, useRelay, type ApiKind } from '../relay.js'
 
 /**
  * 官方接口的鉴权头。
@@ -32,12 +32,19 @@ export const resolveAuth = async (
   style: AuthStyle,
   beta = false
 ): Promise<{ base: string | null; headers: Record<string, string> }> => {
+  // 用户把这路接口关掉了：直接拒绝，不要偷偷回落到别的通道
+  if (useRelay.getState().routes[kind].target === 'disabled') {
+    throw new Error('此接口已被禁用')
+  }
   const relay = relayFor(kind)
   if (relay) {
     // 令牌快过期时先换一张新的，避免聊到一半 401
     const ready = await ensureRelayToken(relay)
     const headers: Record<string, string> = { 'x-relay-token': relayKey(ready) }
-    if (apiKey) {
+    if (usingAccountAuth()) {
+      // 账号模式 + 走中继：用中继托管的那份账号，客户端不再各带一份令牌
+      headers['x-relay-dsh'] = 'default'
+    } else if (apiKey) {
       // 中继没配服务端 Key 时，上游用的是这枚客户端 Key
       if (style === 'anthropic') {
         headers['x-api-key'] = apiKey
@@ -67,6 +74,9 @@ export const resolveAuth = async (
 
 /** Anthropic 兼容接口（messages / files）的鉴权头（同步版，供不支持异步的调用点使用） */
 export const messageAuthHeaders = (apiKey: string, beta: boolean): Record<string, string> => {
+  if (useRelay.getState().routes.chat.target === 'disabled') {
+    throw new Error('此接口已被禁用')
+  }
   const headers: Record<string, string> = {}
   if (usingAccountAuth()) {
     headers['x-dsh-auth-token'] = useAccount.getState().token

@@ -59,7 +59,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const waiting = streaming && view.steps.length === 0 && !view.answer && !message.thinking
   const summaryEntry = `${message.id}-summary`
   return (
-    <div className={styles.message}>
+    <div className={styles.message} data-message-id={message.id}>
       {refused ? null : (
         <ReplyArea
           message={message}

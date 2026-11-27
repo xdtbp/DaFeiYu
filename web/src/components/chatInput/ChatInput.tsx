@@ -144,20 +144,25 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     startPhotoWatcher()
   }, [])
 
-  // 打开面板：先渲染缓存，等展开动画播完再比对一次，有新图就播插入动画
+  // 打开面板：先渲染缓存，等展开动画播完再比对一次
   useEffect(() => {
     if (!showPanel) {
       return
     }
     hydratePhotos()
-    const timer = window.setTimeout(() => {
-      if (refreshPhotos()) {
-        setRowShift(true)
-        window.setTimeout(() => setRowShift(false), 320)
-      }
-    }, 300)
+    const timer = window.setTimeout(() => refreshPhotos(), 300)
     return () => window.clearTimeout(timer)
   }, [showPanel])
+
+  // 预览是分帧解码的，真正「有新图」以缓存里的 fresh 为准，插入时播一次后移动画
+  useEffect(() => {
+    if (freshPhotos.length === 0) {
+      return
+    }
+    setRowShift(true)
+    const timer = window.setTimeout(() => setRowShift(false), 320)
+    return () => window.clearTimeout(timer)
+  }, [freshPhotos])
 
   /** 最近照片在草稿里的文件名固定为 photo_<id>.jpg，用来判断是否已选中 */
   const photoName = (id: string) => `photo_${id}.jpg`
@@ -309,7 +314,21 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       return
     }
     // 文本与上传完成态由提交动作读取最新快照，不使用上一次渲染的草稿。
-    if (!ensureApiKey() || !sendMessage(sessionId)) {
+    if (!ensureApiKey()) {
+      return
+    }
+    // 会话列表还在后台初始化：等 ready 再发，别把用户刚打的字吞掉
+    if (!useChatStore.getState().ready) {
+      const unsubscribe = useChatStore.subscribe((state) => {
+        if (state.ready) {
+          unsubscribe()
+          sendMessage(sessionId)
+          stopReadAloud()
+        }
+      })
+      return
+    }
+    if (!sendMessage(sessionId)) {
       return
     }
     stopReadAloud()

@@ -12,6 +12,7 @@ import { closeSearchPanel } from '../search/searchPanelState.js'
 import { IconArrowDown20 } from '../base/icons-extra.js'
 import { AssistantMessage } from './AssistantMessage.js'
 import { ScrollToBottomContext } from './scrollContext.js'
+import { registerJumpToMessage } from './scrollControl.js'
 import { UserMessage } from './UserMessage.js'
 import type { Message } from '../../services/chat/types.js'
 
@@ -90,6 +91,31 @@ export const MessageList = ({
     el.scrollTop = el.scrollHeight
     scrollTopRef.current = el.scrollTop
   }, [stopFollow])
+
+  /**
+   * 平滑滚到指定消息并居中。关键：先退出底部跟随并停掉跟随动画，
+   * 否则长距离跳转会被 ResizeObserver 触发的 scrollToBottom 拽回底部，
+   * 表现为「点靠前的菜单项没反应」。
+   */
+  const jumpToMessage = useCallback(
+    (messageId: string) => {
+      const el = scrollRef.current
+      if (!el) {
+        return
+      }
+      stopFollow()
+      stickyRef.current = false
+      const target = el.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`)
+      if (!target) {
+        return
+      }
+      const top = el.scrollTop + target.getBoundingClientRect().top - el.getBoundingClientRect().top - (el.clientHeight - target.offsetHeight) / 2
+      el.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+      scrollTopRef.current = el.scrollTop
+      setShowScrollButton(true)
+    },
+    [stopFollow]
+  )
 
   /**
    * 平滑跟随底部：每帧追剩余距离的一部分，而不是每次更新都直接赋值。
@@ -227,6 +253,12 @@ export const MessageList = ({
   }, [isMobile, scrollToBottom, stopFollow])
 
   useEffect(() => stopFollow, [stopFollow])
+
+  // 把跳转实现注册给顶栏调用（兄弟节点，走模块单例而非 context）
+  useEffect(() => {
+    registerJumpToMessage(jumpToMessage)
+    return () => registerJumpToMessage(null)
+  }, [jumpToMessage])
 
   const lastIndex = messages.length - 1
   const uploadRetryId = getUploadRetryId(messages, streaming)

@@ -752,19 +752,16 @@ const ModelSetting = () => {
   }
 
   return (
-    <SettingCell
-      icon={<IconSettingModel />}
-      label={t('settingsModel')}
-      status={null}
-      action={
-        <Select
-          ariaLabel={t('settingsModel')}
-          value={value}
-          options={options}
-          onChange={onChange}
-        />
-      }
-    />
+    // 模型名 + 来源可能很长，拆成两行：标题在上，选择器独占一行
+    <div className={clsx(styles.cell, styles.modelCell)}>
+      <div className={styles.modelHead}>
+        <span className={styles.cellIcon}>
+          <IconSettingModel />
+        </span>
+        <span className={styles.label}>{t('settingsModel')}</span>
+      </div>
+      <Select ariaLabel={t('settingsModel')} value={value} options={options} onChange={onChange} />
+    </div>
   )
 }
 

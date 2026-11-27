@@ -46,6 +46,7 @@ import {
   SIDER_WIDTH,
   applySiderDrag,
   beginSiderDrag,
+  bindSiderElements,
   currentSiderOffset,
   endSiderDrag,
   SETTLE_RATIO,
@@ -74,10 +75,8 @@ export const App = () => {
   const ready = useChatStore((state) => state.ready)
   /** 启动时发现中继有更新的会话：询问是否同步（与更新弹窗互斥，先更新后同步） */
   const [syncAsk, setSyncAsk] = useState<RelayServer | null>(null)
-  // 只有抽屉开着/正在拖时才给 <main> 加 transform：常驻合成层会让文字发虚
-  const siderOpen = useMobileSider((state) => state.open)
-  const siderDragging = useMobileSider((state) => state.dragging)
-  const siderClosing = useMobileSider((state) => state.closing)
+  /** 侧边栏拖动时直接写这个元素的 transform，不走 React 渲染 */
+  const mainRef = useRef<HTMLElement>(null)
   const initError = useChatStore((state) => state.initError)
   const saveError = useChatStore((state) => Object.values(state.sessionSaveErrors).some(Boolean))
   const importingHistory = useChatStore((state) => state.importingHistory)
@@ -98,18 +97,24 @@ export const App = () => {
   // 启动检查更新：发现更高版本时弹窗，可更新 / 稍后 / 跳过此版本
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const updateChecked = useRef(false)
-  // 加载态：对话渲染完成后淡出，避免白屏闪烁
-  const loading = !ready || (activeId !== null && !session)
+  // 加载态：只在「要打开某个会话」时铺遮罩；欢迎页直接出，别让人等
+  const loading = activeId !== null && !session
   const [loadingExiting, setLoadingExiting] = useState(false)
   const loadingExitDoneRef = useRef(false)
+  /** 只有「真的显示过」加载层，才需要播淡出；否则首帧会凭空闪一下 */
+  const loadingShownRef = useRef(false)
 
   usePreventPageScroll(isMobile)
 
   // 加载结束：等两帧确保对话已渲染，再淡出加载层
   useEffect(() => {
     if (loading) {
+      loadingShownRef.current = true
       loadingExitDoneRef.current = false
       setLoadingExiting(false)
+      return
+    }
+    if (!loadingShownRef.current) {
       return
     }
     if (loadingExitDoneRef.current || loadingExiting) {
@@ -352,8 +357,27 @@ export const App = () => {
   useEffect(closeMobileSider, [activeId, isMobile])
 
   useEffect(() => {
-    void initChat()
+    // 会话列表可能上千条（读库 + 排序 ≈ 100ms+），等首屏画完再做，
+    // 别和「欢迎页第一帧」抢主线程
+    // 账号是同步读原生缓存的：必须立刻挂上，否则「是否已登录」判断会误判成未登录
     setupAccount()
+    const start = () => {
+      void initChat()
+    }
+    // 先固定等 600ms 让首屏彻底稳定，再挑空闲时段读库
+    const timer = window.setTimeout(() => {
+      const idle = (
+        window as unknown as {
+          requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void
+        }
+      ).requestIdleCallback
+      if (idle) {
+        idle(start, { timeout: 1500 })
+      } else {
+        start()
+      }
+    }, 600)
+    return () => window.clearTimeout(timer)
   }, [])
 
   // 启动同步：开了「始终同步」就静默拉取，否则先问一句
@@ -437,12 +461,14 @@ export const App = () => {
     }
   }, [accountStatus, apiKey])
 
-  // 同意免责且不在引导中时，才检查 API Key，避免弹层被门槛页遮挡
+  // 同意免责且不在引导中、并且本地数据已就绪时才检查凭据：
+  // 省得初始化还没跑完就弹出「配置 API Key / 登录」的窗口
   useEffect(() => {
-    if (disclaimerAccepted && !showOnboarding) {
-      ensureApiKey()
+    if (!ready || !disclaimerAccepted || showOnboarding) {
+      return
     }
-  }, [disclaimerAccepted, showOnboarding])
+    ensureApiKey()
+  }, [ready, disclaimerAccepted, showOnboarding])
 
   // 退到后台被打断的回答：回到前台自动续写一次，不用用户手动点
   const resumedRef = useRef(new Set<string>())
@@ -543,17 +569,17 @@ export const App = () => {
     }
   }, [])
 
+  // 把 <main> 交给手势模块：拖动时只写它的 transform，不经过 React
+  useEffect(() => {
+    bindSiderElements({ main: mainRef.current })
+    return () => bindSiderElements({ main: null })
+  }, [isMobile])
+
   return (
     <>
       <div ref={frameRef} className={styles.frame}>
         {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
-        <main
-          className={
-            isMobile && (siderOpen || siderDragging || siderClosing)
-              ? `${styles.main} ${styles.mobileMain}`
-              : styles.main
-          }
-        >
+        <main ref={mainRef} className={styles.main}>
           {saveError ? (
             <div className={styles.saveError} role="alert">
               <span>{t('sessionSaveFailed')}</span>
